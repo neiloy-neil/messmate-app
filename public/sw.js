@@ -35,7 +35,8 @@ self.addEventListener('fetch', event => {
   if (
     event.request.method !== 'GET' ||
     event.request.url.includes('/api/') ||
-    event.request.url.includes('supabase.co')
+    event.request.url.includes('supabase.co') ||
+    !(event.request.url.startsWith('http:') || event.request.url.startsWith('https:'))
   ) {
     return; // default browser behavior
   }
