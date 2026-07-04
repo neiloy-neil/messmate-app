@@ -8,6 +8,7 @@ import { ImportModal } from './ImportModal'
 const NAV = [
   { href: '/', icon: '📊', label: 'Dashboard', section: 'Overview' },
   { href: '/bills', icon: '🧾', label: 'Fixed Bills', section: 'Management' },
+  { href: '/payments', icon: '💳', label: 'Payment History', section: null },
   { href: '/meals', icon: '🍽️', label: 'Meal Tracker', section: null },
   { href: '/shopping', icon: '🛒', label: 'Shopping Expense', section: null },
   { href: '/utility', icon: '🔧', label: 'Utility Expenses', section: null },
