@@ -1,4 +1,4 @@
-import { Member, Meal, Shopping, Deposit, Utility } from './supabase'
+import { Member, Meal, Shopping, Deposit, Utility, IndividualRent, SharedBills } from './supabase'
 
 export interface MemberSummary {
   member: Member
@@ -6,7 +6,11 @@ export interface MemberSummary {
   shopping: number
   deposit: number
   utilityShare: number
+  rent: number
+  sharedBillShare: number
   mealCost: number
+  previousDue: number
+  lateFine: number
   totalDue: number
   balance: number
 }
@@ -17,6 +21,9 @@ export interface MonthSummary {
   totalShopping: number
   totalDeposit: number
   totalUtility: number
+  totalRent: number
+  totalSharedBills: number
+  totalLateFines: number
   mealRate: number
 }
 
@@ -25,20 +32,32 @@ export function computeSummary(
   meals: Meal[],
   shopping: Shopping[],
   deposits: Deposit[],
-  utilities: Utility[]
+  utilities: Utility[],
+  individualRents: IndividualRent[] = [],
+  sharedBills: SharedBills[] = [],
+  previousBalances: Record<string, number> = {},
+  currentDayForFine: number = new Date().getDate()
 ): MonthSummary {
   const memberMap: Record<string, MemberSummary> = {}
 
   members.forEach(m => {
+    // If balance was negative, they owed money. previousDue = -balance
+    const prevBal = previousBalances[m.id] || 0
+    const previousDue = prevBal < 0 ? -prevBal : 0
+
     memberMap[m.id] = {
       member: m,
       meals: 0,
       shopping: 0,
       deposit: 0,
       utilityShare: 0,
+      rent: 0,
+      sharedBillShare: 0,
       mealCost: 0,
+      previousDue,
+      lateFine: 0,
       totalDue: 0,
-      balance: 0,
+      balance: prevBal > 0 ? prevBal : 0, // carry forward positive balance
     }
   })
 
@@ -51,19 +70,56 @@ export function computeSummary(
   deposits.forEach(r => {
     if (memberMap[r.member_id]) memberMap[r.member_id].deposit += Number(r.amount)
   })
+  individualRents.forEach(r => {
+    if (memberMap[r.member_id]) memberMap[r.member_id].rent += Number(r.amount)
+  })
 
   const totalMeals = Object.values(memberMap).reduce((s, d) => s + d.meals, 0)
   const totalShopping = Object.values(memberMap).reduce((s, d) => s + d.shopping, 0)
   const totalDeposit = Object.values(memberMap).reduce((s, d) => s + d.deposit, 0)
   const totalUtility = utilities.reduce((s, u) => s + Number(u.amount), 0)
+  const totalRent = individualRents.reduce((s, r) => s + Number(r.amount), 0)
+  
+  const sb = sharedBills.length > 0 ? sharedBills[0] : null
+  const totalSharedBills = sb ? (Number(sb.gas) + Number(sb.electricity) + Number(sb.internet) + Number(sb.water) + Number(sb.cleaner) + Number(sb.maid)) : 0
+
   const mealRate = totalMeals > 0 ? totalShopping / totalMeals : 0
   const utilityShare = members.length > 0 ? totalUtility / members.length : 0
+  const sharedBillShare = members.length > 0 ? totalSharedBills / members.length : 0
+
+  let totalLateFines = 0
 
   Object.values(memberMap).forEach(d => {
+    // Late Fine Calculation
+    if (d.previousDue > 0) {
+      // Check deposits to see when they cleared it
+      const memberDeps = deposits.filter(dep => dep.member_id === d.member.id).sort((a, b) => a.date.localeCompare(b.date))
+      let accumulated = 0
+      let paymentDay = currentDayForFine
+
+      for (const dep of memberDeps) {
+        accumulated += Number(dep.amount)
+        if (accumulated >= d.previousDue) {
+          paymentDay = parseInt(dep.date.split('-')[2])
+          break
+        }
+      }
+      
+      const daysLate = Math.max(0, paymentDay - 11) // 12th = 1 day = 2 meals fine
+      if (daysLate > 0) {
+        d.lateFine = daysLate * (2 * mealRate)
+        totalLateFines += d.lateFine
+      }
+    }
+
     d.utilityShare = Math.ceil(utilityShare)
+    d.sharedBillShare = Math.ceil(sharedBillShare)
     d.mealCost = Math.ceil(d.meals * mealRate)
-    d.totalDue = d.mealCost + d.utilityShare
-    d.balance = d.deposit - d.totalDue
+    
+    // totalDue includes this month's expenses + previous due + late fines
+    d.totalDue = d.mealCost + d.utilityShare + d.rent + d.sharedBillShare + d.previousDue + Math.ceil(d.lateFine)
+    // balance = (carried over positive balance) + new deposit - totalDue
+    d.balance = d.balance + d.deposit - d.totalDue
   })
 
   return {
@@ -72,9 +128,13 @@ export function computeSummary(
     totalShopping,
     totalDeposit,
     totalUtility,
+    totalRent,
+    totalSharedBills,
+    totalLateFines,
     mealRate,
   }
 }
+
 
 export interface Settlement {
   from: Member
@@ -110,6 +170,13 @@ export function computeSettlement(summaries: MemberSummary[]): Settlement[] {
 export function getDaysInMonth(ym: string): number {
   const [y, m] = ym.split('-').map(Number)
   return new Date(y, m, 0).getDate()
+}
+
+export function getPreviousMonth(ym: string): string {
+  if (!ym) return ''
+  const [y, m] = ym.split('-').map(Number)
+  if (m === 1) return `${y - 1}-12`
+  return `${y}-${String(m - 1).padStart(2, '0')}`
 }
 
 export function formatDay(ym: string, day: number): string {

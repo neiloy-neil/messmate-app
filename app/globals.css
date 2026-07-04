@@ -261,11 +261,17 @@ tr.total-row td { background: rgba(99,102,241,0.07); font-weight: 700; border-to
 .form-group { margin-bottom: 14px; }
 .form-label { display: block; font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
 .form-input {
-  width: 100%; background: var(--bg-glass); border: 1px solid var(--border);
-  border-radius: 8px; color: var(--text); font-size: 14px; padding: 9px 13px; outline: none; transition: var(--ease);
+  width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px; outline: none; transition: var(--ease);
 }
-.form-input:focus { border-color: var(--accent); background: var(--bg-glass-hover); box-shadow: 0 0 0 3px rgba(99,102,241,0.14); }
-.form-input::placeholder { color: var(--text3); }
+.form-input:focus { border-color: var(--accent); background: rgba(255,255,255,0.05); }
+.form-input::placeholder { color: var(--text2); }
+
+/* Ensure <option> text is visible regardless of browser default dropdown background */
+option {
+  background: #ffffff;
+  color: #000000;
+}
 select.form-input { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b949e' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 34px; }
 
 /* ── Import zone ─────────────────────────────────────── */
@@ -314,10 +320,44 @@ select.form-input { cursor: pointer; appearance: none; background-image: url("da
 .spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 40px auto; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Bottom Nav ──────────────────────────────────────── */
+.bottom-nav { display: none; }
+
 /* ── Responsive ──────────────────────────────────────── */
 @media (max-width: 768px) {
-  .sidebar { transform: translateX(-100%); }
-  .main { margin-left: 0; }
-  .page { padding: 16px; }
+  .sidebar { transform: translateX(-100%); transition: var(--ease); }
+  .main { margin-left: 0; padding-bottom: 70px; width: 100%; max-width: 100vw; overflow-x: hidden; } /* Space for bottom nav */
+  .page { padding: 16px; width: 100%; max-width: 100vw; overflow-x: hidden; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
+  .grid-2 { grid-template-columns: 1fr; }
+  
+  /* Bottom Nav styling */
+  .bottom-nav {
+    display: flex; position: fixed; bottom: 0; left: 0; width: 100%;
+    background: rgba(22,27,34,0.95); backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border); z-index: 100;
+    justify-content: space-between; align-items: flex-start; padding: 10px 8px;
+    padding-bottom: calc(env(safe-area-inset-bottom, 8px) + 10px);
+  }
+  .bottom-nav-link {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    color: var(--text2); font-size: 9px; font-weight: 600; text-decoration: none;
+    flex: 1; transition: var(--ease); text-align: center;
+  }
+  .bottom-nav-link.active { color: var(--accent); }
+  .bottom-nav-icon { font-size: 20px; }
+  .bottom-nav-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  
+  /* Form scaling for touch */
+  .form-input, .month-input { padding: 12px 14px; font-size: 16px; }
+  .btn { padding: 10px 14px; font-size: 13px; }
+  
+  /* Tables */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; border: 1px solid var(--border); }
+  th, td { white-space: nowrap; }
+  
+  /* Fix text cutoffs */
+  .topbar { padding: 0 16px; gap: 10px; }
+  .topbar-title { font-size: 15px; }
+  .alert-text { white-space: normal; line-height: 1.4; }
 }

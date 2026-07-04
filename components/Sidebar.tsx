@@ -7,9 +7,9 @@ import { ImportModal } from './ImportModal'
 
 const NAV = [
   { href: '/', icon: '📊', label: 'Dashboard', section: 'Overview' },
-  { href: '/meals', icon: '🍽️', label: 'Meal Tracker', section: 'Management' },
+  { href: '/bills', icon: '🧾', label: 'Fixed Bills', section: 'Management' },
+  { href: '/meals', icon: '🍽️', label: 'Meal Tracker', section: null },
   { href: '/shopping', icon: '🛒', label: 'Shopping Expense', section: null },
-  { href: '/deposits', icon: '💰', label: 'Deposits', section: null },
   { href: '/utility', icon: '🔧', label: 'Utility Expenses', section: null },
   { href: '/report', icon: '📋', label: 'Final Report', section: 'Reports' },
   { href: '/members', icon: '👥', label: 'Members', section: null },
@@ -74,12 +74,38 @@ function SidebarInner() {
           })}
         </nav>
 
-        <div className="sidebar-footer">
+        <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <button className="btn-import" onClick={() => setShowImport(true)}>
             📥 Import Excel
           </button>
+          <button 
+            className="btn-import" 
+            style={{ background: 'var(--red)', borderColor: 'var(--red)' }}
+            onClick={async () => {
+              const { logout } = await import('@/app/login/actions')
+              await logout()
+            }}
+          >
+            🚪 Log Out
+          </button>
         </div>
       </aside>
+
+      <nav className="bottom-nav">
+        {NAV.map(item => {
+          const isActive = pathname === item.href
+          return (
+            <Link
+              key={'bottom-' + item.href}
+              href={`${item.href}?month=${month}`}
+              className={`bottom-nav-link${isActive ? ' active' : ''}`}
+            >
+              <span className="bottom-nav-icon">{item.icon}</span>
+              <span className="bottom-nav-label">{item.label}</span>
+            </Link>
+          )
+        })}
+      </nav>
 
       {showImport && <ImportModal month={month} onClose={() => setShowImport(false)} />}
     </>

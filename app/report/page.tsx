@@ -3,7 +3,7 @@ import { Suspense } from 'react'
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase, Member, Meal, Shopping, Deposit, Utility } from '@/lib/supabase'
-import { computeSummary, monthLabel, currentYM, fmt, getDaysInMonth } from '@/lib/calculations'
+import { computeSummary, monthLabel, currentYM, fmt, getDaysInMonth, getPreviousMonth } from '@/lib/calculations'
 import { MemberAvatar } from '@/components/MemberAvatar'
 import { SettlementList } from '@/components/SettlementList'
 import { toast } from '@/components/ToastProvider'
@@ -16,29 +16,57 @@ function ReportPageInner() {
   const [shopping, setShopping] = useState<Shopping[]>([])
   const [deposits, setDeposits] = useState<Deposit[]>([])
   const [utilities, setUtilities] = useState<Utility[]>([])
+  const [rents, setRents] = useState<any[]>([])
+  const [shared, setShared] = useState<any[]>([])
+  const [previousBalances, setPreviousBalances] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
     const start = `${month}-01`, end = `${month}-${getDaysInMonth(month)}`
-    const [m, ml, sh, dep, ut] = await Promise.all([
+    const prevMonth = getPreviousMonth(month)
+    const pStart = `${prevMonth}-01`, pEnd = `${prevMonth}-${getDaysInMonth(prevMonth)}`
+
+    const [
+      m, ml, sh, dep, ut, ir, sb,
+      pml, psh, pdep, put, pir, psb
+    ] = await Promise.all([
       supabase.from('members').select('*').order('created_at'),
       supabase.from('meals').select('*').gte('date', start).lte('date', end),
       supabase.from('shopping').select('*').gte('date', start).lte('date', end),
       supabase.from('deposits').select('*').gte('date', start).lte('date', end),
       supabase.from('utility').select('*').gte('date', start).lte('date', end),
+      supabase.from('individual_rent').select('*').eq('month', month),
+      supabase.from('shared_bills').select('*').eq('month', month),
+      // Prev month
+      supabase.from('meals').select('*').gte('date', pStart).lte('date', pEnd),
+      supabase.from('shopping').select('*').gte('date', pStart).lte('date', pEnd),
+      supabase.from('deposits').select('*').gte('date', pStart).lte('date', pEnd),
+      supabase.from('utility').select('*').gte('date', pStart).lte('date', pEnd),
+      supabase.from('individual_rent').select('*').eq('month', prevMonth),
+      supabase.from('shared_bills').select('*').eq('month', prevMonth)
     ])
-    setMembers(m.data || [])
+    
+    const membersList = m.data || []
+    setMembers(membersList)
     setMeals(ml.data || [])
     setShopping(sh.data || [])
     setDeposits(dep.data || [])
     setUtilities(ut.data || [])
+    setRents(ir.data || [])
+    setShared(sb.data || [])
+
+    const prevSum = computeSummary(membersList, pml.data||[], psh.data||[], pdep.data||[], put.data||[], pir.data||[], psb.data||[])
+    const pBals: Record<string, number> = {}
+    prevSum.members.forEach(s => { pBals[s.member.id] = s.balance })
+    setPreviousBalances(pBals)
+    
     setLoading(false)
   }, [month])
 
   useEffect(() => { load() }, [load])
 
-  const summary = computeSummary(members, meals, shopping, deposits, utilities)
+  const summary = computeSummary(members, meals, shopping, deposits, utilities, rents, shared, previousBalances)
 
   async function exportExcel() {
     const { default: XLSX } = await import('xlsx')
@@ -46,15 +74,18 @@ function ReportPageInner() {
       ['MessMate — Final Report'],
       [`Month: ${monthLabel(month)}`],
       [],
-      ['Name', 'Meals', 'Meal Rate (৳)', 'Meal Cost (৳)', 'Utility Share (৳)', 'Total Due (৳)', 'Deposit (৳)', 'Balance (৳)'],
-      ...summary.members.map(s => [s.member.name, s.meals, +summary.mealRate.toFixed(2), s.mealCost, s.utilityShare, s.totalDue, s.deposit, s.balance]),
+      ['Name', 'Meals', 'Meal Rate (৳)', 'Meal Cost (৳)', 'Misc Utility (৳)', 'Rent (৳)', 'Shared Bills (৳)', 'Prev Due (৳)', 'Late Fine (৳)', 'Total Due (৳)', 'Deposit (৳)', 'Balance (৳)'],
+      ...summary.members.map(s => [s.member.name, s.meals, +summary.mealRate.toFixed(2), s.mealCost, s.utilityShare, s.rent, s.sharedBillShare, s.previousDue, s.lateFine, s.totalDue, s.deposit, s.balance]),
       [],
       ['Summary'],
       ['Total Meals', summary.totalMeals],
       ['Total Shopping', summary.totalShopping],
       ['Meal Rate', +summary.mealRate.toFixed(2)],
       ['Total Deposit', summary.totalDeposit],
-      ['Total Utility', summary.totalUtility],
+      ['Total Misc Utility', summary.totalUtility],
+      ['Total Rent', summary.totalRent],
+      ['Total Shared Bills', summary.totalSharedBills],
+      ['Total Late Fines', summary.totalLateFines],
     ]
     const ws = XLSX.utils.aoa_to_sheet(rows)
     const wb = XLSX.utils.book_new()
@@ -65,7 +96,7 @@ function ReportPageInner() {
 
   if (loading) return <div className="page"><div className="spinner" /></div>
 
-  const { totalMeals, totalShopping, totalDeposit, totalUtility, mealRate, members: summaries } = summary
+  const { totalMeals, totalShopping, totalDeposit, totalUtility, totalRent, totalSharedBills, mealRate, members: summaries } = summary
   const totalDue = summaries.reduce((s, x) => s + x.totalDue, 0)
   const netBalance = totalDeposit - totalDue
 
@@ -101,10 +132,10 @@ function ReportPageInner() {
           <div className="stat-val">{fmt(totalDeposit)}</div>
           <div className="stat-sub">Collected</div>
         </div>
-        <div className="stat-card red">
-          <div className="stat-hd"><div className="stat-label">Utility</div><div className="stat-icon red">🔧</div></div>
-          <div className="stat-val">{fmt(totalUtility)}</div>
-          <div className="stat-sub">Split equally</div>
+        <div className="stat-card blue">
+          <div className="stat-hd"><div className="stat-label">Fixed Bills</div><div className="stat-icon blue">🧾</div></div>
+          <div className="stat-val">{fmt(totalRent + totalSharedBills)}</div>
+          <div className="stat-sub">Rent & Shared</div>
         </div>
       </div>
 
@@ -127,7 +158,11 @@ function ReportPageInner() {
                   <th className="text-center">Meals</th>
                   <th className="text-right">Meal Rate</th>
                   <th className="text-right">Meal Cost</th>
-                  <th className="text-right">Utility Share</th>
+                  <th className="text-right">Rent</th>
+                  <th className="text-right">Shared Bills</th>
+                  <th className="text-right">Misc Util</th>
+                  <th className="text-right">Prev Due</th>
+                  <th className="text-right">Late Fine</th>
                   <th className="text-right">Total Due</th>
                   <th className="text-right">Deposit</th>
                   <th className="text-right">Balance</th>
@@ -142,7 +177,11 @@ function ReportPageInner() {
                       <td className="text-center">{s.meals}</td>
                       <td className="text-right text-muted">{fmt(mealRate, 2)}</td>
                       <td className="text-right">{fmt(s.mealCost)}</td>
+                      <td className="text-right">{fmt(s.rent)}</td>
+                      <td className="text-right">{fmt(s.sharedBillShare)}</td>
                       <td className="text-right">{fmt(s.utilityShare)}</td>
+                      <td className="text-right" style={{ color: s.previousDue > 0 ? 'var(--red)' : '' }}>{s.previousDue > 0 ? fmt(s.previousDue) : '-'}</td>
+                      <td className="text-right" style={{ color: s.lateFine > 0 ? 'var(--red)' : '', fontWeight: s.lateFine > 0 ? 'bold' : 'normal' }}>{s.lateFine > 0 ? fmt(s.lateFine) : '-'}</td>
                       <td className="text-right font-bold">{fmt(s.totalDue)}</td>
                       <td className="text-right">{fmt(s.deposit)}</td>
                       <td className={`text-right font-bold ${bal >= 0 ? 'text-green' : 'text-red'}`} style={{ fontSize: 15 }}>
@@ -158,7 +197,11 @@ function ReportPageInner() {
                   <td className="text-center">{totalMeals}</td>
                   <td />
                   <td className="text-right">{fmt(summaries.reduce((s, x) => s + x.mealCost, 0))}</td>
+                  <td className="text-right">{fmt(totalRent)}</td>
+                  <td className="text-right">{fmt(totalSharedBills)}</td>
                   <td className="text-right">{fmt(totalUtility)}</td>
+                  <td className="text-right">{fmt(summaries.reduce((s, x) => s + x.previousDue, 0))}</td>
+                  <td className="text-right">{fmt(summary.totalLateFines)}</td>
                   <td className="text-right">{fmt(totalDue)}</td>
                   <td className="text-right">{fmt(totalDeposit)}</td>
                   <td className={`text-right font-bold ${netBalance >= 0 ? 'text-green' : 'text-red'}`} style={{ fontSize: 15 }}>

@@ -1,75 +1,94 @@
 'use client'
 import { Suspense } from 'react'
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { supabase, Member } from '@/lib/supabase'
-import { getDaysInMonth, formatDay, monthLabel, currentYM, fmt } from '@/lib/calculations'
+import { supabase, Member, Shopping } from '@/lib/supabase'
+import { getDaysInMonth, monthLabel, currentYM, fmt } from '@/lib/calculations'
 import { MemberAvatar } from '@/components/MemberAvatar'
 import { toast } from '@/components/ToastProvider'
-
-interface Row { date: string; [memberId: string]: number | string }
 
 function ShoppingPageInner() {
   const sp = useSearchParams()
   const month = sp.get('month') || currentYM()
+  
   const [members, setMembers] = useState<Member[]>([])
-  const [rows, setRows] = useState<Row[]>([])
+  const [shopping, setShopping] = useState<Shopping[]>([])
   const [loading, setLoading] = useState(true)
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  
+  // Modal State
+  const [showModal, setShowModal] = useState(false)
+  const [formDate, setFormDate] = useState('')
+  const [formMember, setFormMember] = useState('')
+  const [formDesc, setFormDesc] = useState('')
+  const [formAmount, setFormAmount] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
+    const start = `${month}-01`, end = `${month}-${getDaysInMonth(month)}`
     const [mRes, dataRes] = await Promise.all([
       supabase.from('members').select('*').order('created_at'),
-      supabase.from('shopping').select('*').gte('date', `${month}-01`).lte('date', `${month}-${getDaysInMonth(month)}`),
+      supabase.from('shopping').select('*').gte('date', start).lte('date', end).order('date', { ascending: false }).order('created_at', { ascending: false }),
     ])
-    const mems: Member[] = mRes.data || []
-    const data = dataRes.data || []
-    const days = getDaysInMonth(month)
-    const grid: Row[] = []
-    for (let d = 1; d <= days; d++) {
-      const date = formatDay(month, d)
-      const row: Row = { date }
-      mems.forEach(m => { row[m.id] = 0 })
-      data.filter(r => r.date === date).forEach(r => { row[r.member_id] = Number(r.amount) })
-      grid.push(row)
+    setMembers(mRes.data || [])
+    setShopping(dataRes.data || [])
+    
+    // Default form date to today if in current month, else 1st of month
+    const today = new Date()
+    const todayMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+    if (month === todayMonth) {
+      setFormDate(`${todayMonth}-${String(today.getDate()).padStart(2, '0')}`)
+    } else {
+      setFormDate(`${month}-01`)
     }
-    setMembers(mems)
-    setRows(grid)
+    
     setLoading(false)
   }, [month])
 
   useEffect(() => { load() }, [load])
 
-  function handleChange(date: string, memberId: string, val: string) {
-    setRows(prev => prev.map(r => r.date === date ? { ...r, [memberId]: val === '' ? 0 : Number(val) } : r))
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(async () => {
-      const amount = val === '' ? 0 : Number(val)
-      if (amount === 0) {
-        await supabase.from('shopping').delete().eq('member_id', memberId).eq('date', date)
-      } else {
-        await supabase.from('shopping').upsert({ member_id: memberId, date, amount }, { onConflict: 'member_id,date' })
-      }
-    }, 600)
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault()
+    if (!formMember || !formDate || !formDesc || !formAmount) return
+    
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { error } = await supabase.from('shopping').insert({
+      user_id: user.id,
+      member_id: formMember,
+      date: formDate,
+      description: formDesc,
+      amount: Number(formAmount)
+    })
+
+    if (error) {
+      toast.error('Error saving expense')
+      console.error(error)
+    } else {
+      toast.success('Shopping expense added')
+      setShowModal(false)
+      setFormDesc('')
+      setFormAmount('')
+      load()
+    }
   }
 
-  function getTotals() {
-    const totals: Record<string, number> = {}
-    members.forEach(m => { totals[m.id] = 0 })
-    rows.forEach(r => members.forEach(m => { totals[m.id] += Number(r[m.id]) || 0 }))
-    return totals
+  async function handleDelete(id: string) {
+    if (!confirm('Delete this shopping entry?')) return
+    await supabase.from('shopping').delete().eq('id', id)
+    load()
   }
 
   async function exportExcel() {
     const { default: XLSX } = await import('xlsx')
-    const header = ['Date', ...members.map(m => m.name), 'Total']
-    const dataRows = rows.map(r => {
-      let total = 0
-      return [r.date, ...members.map(m => { const v = Number(r[m.id]) || 0; total += v; return v || '' }), total || '']
-    })
-    const totals = getTotals()
-    const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows, ['Total', ...members.map(m => totals[m.id] || '')]])
+    const rows = [
+      ['Date', 'Member', 'Description', 'Amount (৳)'],
+      ...shopping.map(s => {
+        const m = members.find(x => x.id === s.member_id)
+        return [s.date, m ? m.name : 'Unknown', s.description, s.amount]
+      })
+    ]
+    const ws = XLSX.utils.aoa_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Shopping')
     XLSX.writeFile(wb, `Shopping_${month}.xlsx`)
@@ -78,79 +97,119 @@ function ShoppingPageInner() {
 
   if (loading) return <div className="page"><div className="spinner" /></div>
 
-  const totals = getTotals()
-  const grandTotal = Object.values(totals).reduce((a, b) => a + b, 0)
+  const totalExpense = shopping.reduce((sum, s) => sum + Number(s.amount), 0)
 
   return (
     <div className="page">
       <div style={{ marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>Shopping Expense</h1>
-          <p className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>{monthLabel(month)} — who bought groceries</p>
+          <p className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>{monthLabel(month)} — track grocery purchases</p>
         </div>
-        <button className="btn btn-secondary" onClick={exportExcel}>📤 Export Excel</button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn btn-secondary" onClick={exportExcel}>📤 Export</button>
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>➕ Add Expense</button>
+        </div>
       </div>
 
-      {members.length === 0 ? (
-        <div className="card"><div className="empty"><div className="icon">🛒</div><h3>No members yet</h3><p>Add members first.</p></div></div>
-      ) : (
-        <div className="card" style={{ padding: 0 }}>
+      {showModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99 }}>
+          <div className="card" style={{ width: 400, maxWidth: '90%' }}>
+            <h3 style={{ marginBottom: 16 }}>Add Shopping Expense</h3>
+            <form onSubmit={handleSave}>
+              <div className="form-group">
+                <label className="form-label">Member</label>
+                <select className="form-input" value={formMember} onChange={e => setFormMember(e.target.value)} required>
+                  <option value="">Select Member...</option>
+                  {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Date</label>
+                <input type="date" className="form-input" value={formDate} onChange={e => setFormDate(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Description (What was bought?)</label>
+                <input type="text" className="form-input" placeholder="e.g. Chicken, Rice, Oil" value={formDesc} onChange={e => setFormDesc(e.target.value)} required />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Amount (৳)</label>
+                <input type="number" step="0.01" min="0" className="form-input" placeholder="0" value={formAmount} onChange={e => setFormAmount(e.target.value)} required />
+              </div>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Save Expense</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <div className="stats-grid" style={{ marginBottom: 20 }}>
+        <div className="stat-card orange">
+          <div className="stat-hd"><div className="stat-label">Total Expense</div><div className="stat-icon orange">🛒</div></div>
+          <div className="stat-val">{fmt(totalExpense)}</div>
+          <div className="stat-sub">Spent this month</div>
+        </div>
+        <div className="stat-card purple">
+          <div className="stat-hd"><div className="stat-label">Transactions</div><div className="stat-icon purple">🧾</div></div>
+          <div className="stat-val">{shopping.length}</div>
+          <div className="stat-sub">Purchases logged</div>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 0 }}>
+        <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid var(--border)' }}>
+          <div className="card-title">Shopping Ledger</div>
+        </div>
+        
+        {shopping.length === 0 ? (
+          <div className="empty">
+            <div className="icon">🛒</div>
+            <h3>No expenses yet</h3>
+            <p>Click "Add Expense" to start logging.</p>
+          </div>
+        ) : (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Date</th>
-                  {members.map((m, i) => (
-                    <th key={m.id} className="text-center">
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                        <MemberAvatar name={m.name} index={i} size={26} fontSize={10} />
-                        {m.name}
-                      </div>
-                    </th>
-                  ))}
-                  <th className="text-center">Day Total</th>
+                  <th style={{ width: 100 }}>Date</th>
+                  <th>Member</th>
+                  <th>Description</th>
+                  <th className="text-right">Amount</th>
+                  <th style={{ width: 60 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(row => {
-                  let dayTotal = 0
-                  members.forEach(m => { dayTotal += Number(row[m.id]) || 0 })
+                {shopping.map((s) => {
+                  const m = members.find(x => x.id === s.member_id)
+                  const mIdx = members.findIndex(x => x.id === s.member_id)
+                  
                   return (
-                    <tr key={row.date}>
-                      <td className="text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-                        {new Date(row.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                    <tr key={s.id}>
+                      <td className="text-muted" style={{ whiteSpace: 'nowrap' }}>
+                        {new Date(s.date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
                       </td>
-                      {members.map(m => (
-                        <td key={m.id} className="text-center">
-                          <input
-                            type="number" min={0} step={1}
-                            className="cell-input"
-                            value={Number(row[m.id]) || ''}
-                            placeholder="0"
-                            onChange={e => handleChange(row.date, m.id, e.target.value)}
-                          />
-                        </td>
-                      ))}
-                      <td className="text-center font-bold" style={{ color: 'var(--orange)' }}>
-                        {dayTotal > 0 ? fmt(dayTotal) : ''}
+                      <td>
+                        <div className="member-row">
+                          {m ? <MemberAvatar name={m.name} index={mIdx} /> : null}
+                          <span className="member-name">{m ? m.name : 'Unknown'}</span>
+                        </div>
+                      </td>
+                      <td>{s.description}</td>
+                      <td className="text-right font-bold text-orange">{fmt(s.amount)}</td>
+                      <td className="text-center">
+                        <button className="icon-btn" onClick={() => handleDelete(s.id)} title="Delete Expense">🗑️</button>
                       </td>
                     </tr>
                   )
                 })}
               </tbody>
-              <tfoot>
-                <tr className="total-row">
-                  <td style={{ fontWeight: 700 }}>Total Expense</td>
-                  {members.map(m => (
-                    <td key={m.id} className="text-center" style={{ color: 'var(--accent)' }}>{fmt(totals[m.id] || 0)}</td>
-                  ))}
-                  <td className="text-center" style={{ color: 'var(--accent)' }}>{fmt(grandTotal)}</td>
-                </tr>
-              </tfoot>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
@@ -158,3 +217,4 @@ function ShoppingPageInner() {
 export default function ShoppingPage() {
   return <Suspense fallback={<div className="page"><div className="spinner" /></div>}><ShoppingPageInner /></Suspense>
 }
+

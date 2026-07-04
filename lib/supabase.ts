@@ -1,9 +1,6 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@/utils/supabase/client'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient()
 
 // ── Types ──────────────────────────────────────────────
 export interface Member {
@@ -24,6 +21,7 @@ export interface Shopping {
   id: string
   member_id: string
   date: string
+  description: string
   amount: number
   created_at: string
 }
@@ -42,5 +40,25 @@ export interface Utility {
   description: string
   amount: number
   date: string
+  created_at: string
+}
+
+export interface IndividualRent {
+  id: string
+  member_id: string
+  month: string
+  amount: number
+  created_at: string
+}
+
+export interface SharedBills {
+  id: string
+  month: string
+  gas: number
+  electricity: number
+  internet: number
+  water: number
+  cleaner: number
+  maid: number
   created_at: string
 }
