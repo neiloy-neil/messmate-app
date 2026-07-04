@@ -7,7 +7,10 @@ import { currentYM } from '@/lib/calculations'
 import { MemberAvatar } from '@/components/MemberAvatar'
 import { toast } from '@/components/ToastProvider'
 
+import { useRouter } from 'next/navigation'
+
 function PaymentHistoryPageInner() {
+  const router = useRouter()
   const sp = useSearchParams()
   const month = sp.get('month') || currentYM()
   const [loading, setLoading] = useState(true)
@@ -21,18 +24,23 @@ function PaymentHistoryPageInner() {
 
   async function load() {
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login')
+        return
+      }
 
-    const [mRes, dRes] = await Promise.all([
-      supabase.from('members').select('*').order('created_at'),
-      supabase.from('deposits').select('*').like('date', `${month}-%`).order('date', { ascending: false })
-    ])
-    
-    if (mRes.data) setMembers(mRes.data)
-    if (dRes.data) setDeposits(dRes.data)
-    
-    setLoading(false)
+      const [mRes, dRes] = await Promise.all([
+        supabase.from('members').select('*').order('created_at'),
+        supabase.from('deposits').select('*').gte('date', `${month}-01`).lte('date', `${month}-31`).order('date', { ascending: false })
+      ])
+      
+      if (mRes.data) setMembers(mRes.data)
+      if (dRes.data) setDeposits(dRes.data)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function handleDelete(id: string) {
