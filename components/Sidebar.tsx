@@ -39,12 +39,35 @@ function SidebarInner() {
           <span style={{ fontSize: '20px' }}>🍱</span>
           <span style={{ fontWeight: 800, fontSize: '16px', color: 'var(--text-main)' }}>MessMate</span>
         </div>
-        <input
-          type="month"
-          className="month-input mobile-month"
-          value={month}
-          onChange={handleMonthChange}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <input
+            type="month"
+            className="month-input mobile-month"
+            value={month}
+            onChange={handleMonthChange}
+          />
+          <button 
+            onClick={async () => {
+              const { logout } = await import('@/app/login/actions')
+              await logout()
+            }}
+            style={{ 
+              background: 'var(--surface-sunken)', 
+              border: '1px solid var(--border)', 
+              color: 'var(--red)', 
+              fontSize: '16px', 
+              cursor: 'pointer', 
+              padding: '6px 8px',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            title="Log Out"
+          >
+            🚪
+          </button>
+        </div>
       </div>
 
       <aside className="sidebar">

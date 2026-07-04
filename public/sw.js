@@ -1,6 +1,5 @@
 const CACHE_NAME = 'messmate-cache-v1';
 const urlsToCache = [
-  '/',
   '/manifest.json'
 ];
 
