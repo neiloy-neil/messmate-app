@@ -7,12 +7,14 @@ import { computeSummary, monthLabel, currentYM, fmt, getDaysInMonth, getPrevious
 import { MemberAvatar } from '@/components/MemberAvatar'
 import { MealChart, BalanceChart } from '@/components/Charts'
 import { SettlementList } from '@/components/SettlementList'
+import { ToastProvider, toast } from '@/components/ToastProvider'
 import Link from 'next/link'
 
 function DashboardPageInner() {
   const sp = useSearchParams()
   const month = sp.get('month') || currentYM()
   const [loading, setLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
   const [members, setMembers] = useState<Member[]>([])
   const [meals, setMeals] = useState<Meal[]>([])
   const [shopping, setShopping] = useState<Shopping[]>([])
@@ -81,6 +83,7 @@ function DashboardPageInner() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
+    setIsSaving(true)
     const now = new Date()
     const dStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
@@ -92,11 +95,15 @@ function DashboardPageInner() {
       description: 'Payment / Deposit'
     })
 
+    setIsSaving(false)
     if (!error) {
+      toast.success('Payment received successfully')
       setShowPayment(false)
       setPaymentAmount('')
       setPaymentMember('')
       load()
+    } else {
+      toast.error('Failed to save payment: ' + error.message)
     }
   }
 
@@ -134,8 +141,10 @@ function DashboardPageInner() {
                 <input type="number" className="form-input" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} required />
               </div>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowPayment(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Payment</button>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowPayment(false)} disabled={isSaving}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                  {isSaving ? 'Saving...' : 'Save Payment'}
+                </button>
               </div>
             </form>
           </div>

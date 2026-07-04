@@ -33,6 +33,19 @@ function SidebarInner() {
 
   return (
     <>
+      <div className="mobile-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '20px' }}>🍱</span>
+          <span style={{ fontWeight: 800, fontSize: '16px', color: 'var(--text-main)' }}>MessMate</span>
+        </div>
+        <input
+          type="month"
+          className="month-input mobile-month"
+          value={month}
+          onChange={handleMonthChange}
+        />
+      </div>
+
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="logo">
