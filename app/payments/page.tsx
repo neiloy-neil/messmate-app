@@ -7,7 +7,7 @@ import { currentYM } from '@/lib/calculations'
 import { MemberAvatar } from '@/components/MemberAvatar'
 import { toast } from '@/components/ToastProvider'
 
-export default function PaymentHistoryPage() {
+function PaymentHistoryPageInner() {
   const sp = useSearchParams()
   const month = sp.get('month') || currentYM()
   const [loading, setLoading] = useState(true)
@@ -101,5 +101,15 @@ export default function PaymentHistoryPage() {
         )}
       </div>
     </div>
+  )
+}
+
+import { Suspense } from 'react'
+
+export default function PaymentHistoryPage() {
+  return (
+    <Suspense fallback={<div className="page"><div className="spinner" /></div>}>
+      <PaymentHistoryPageInner />
+    </Suspense>
   )
 }
