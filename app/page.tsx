@@ -91,8 +91,7 @@ function DashboardPageInner() {
       user_id: user.id,
       member_id: paymentMember,
       amount: Number(paymentAmount),
-      date: dStr,
-      description: 'Payment / Deposit'
+      date: dStr
     })
 
     setIsSaving(false)
