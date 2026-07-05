@@ -16,11 +16,26 @@ const NAV = [
   { href: '/members', icon: '👥', label: 'Members', section: null },
 ]
 
+const MOBILE_MAIN_NAV = [
+  { href: '/', icon: '📊', label: 'Dashboard' },
+  { href: '/meals', icon: '🍽️', label: 'Meals' },
+  { href: '/report', icon: '📋', label: 'Report' }
+]
+
+const MOBILE_MORE_NAV = [
+  { href: '/bills', icon: '🧾', label: 'Fixed Bills' },
+  { href: '/payments', icon: '💳', label: 'Payments' },
+  { href: '/shopping', icon: '🛒', label: 'Shopping' },
+  { href: '/utility', icon: '🔧', label: 'Utility' },
+  { href: '/members', icon: '👥', label: 'Members' },
+]
+
 function SidebarInner() {
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [showImport, setShowImport] = useState(false)
+  const [showMobileMore, setShowMobileMore] = useState(false)
 
   const month = searchParams.get('month') || currentYM()
 
@@ -129,7 +144,7 @@ function SidebarInner() {
       </aside>
 
       <nav className="bottom-nav">
-        {NAV.map(item => {
+        {MOBILE_MAIN_NAV.map(item => {
           const isActive = pathname === item.href
           return (
             <Link
@@ -142,7 +157,60 @@ function SidebarInner() {
             </Link>
           )
         })}
+        <button
+          className={`bottom-nav-link${showMobileMore ? ' active' : ''}`}
+          onClick={() => setShowMobileMore(true)}
+          style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+        >
+          <span className="bottom-nav-icon">☰</span>
+          <span className="bottom-nav-label">More</span>
+        </button>
       </nav>
+
+      {/* Mobile Drawer Overlay */}
+      {showMobileMore && (
+        <div className="mobile-drawer-overlay" onClick={() => setShowMobileMore(false)}>
+          <div className="mobile-drawer" onClick={e => e.stopPropagation()}>
+            <div className="mobile-drawer-header">
+              <h3>More Options</h3>
+              <button onClick={() => setShowMobileMore(false)} className="drawer-close">✕</button>
+            </div>
+            
+            <div className="mobile-drawer-grid">
+              {MOBILE_MORE_NAV.map(item => {
+                const isActive = pathname === item.href
+                return (
+                  <Link
+                    key={'drawer-' + item.href}
+                    href={`${item.href}?month=${month}`}
+                    onClick={() => setShowMobileMore(false)}
+                    className={`drawer-link${isActive ? ' active' : ''}`}
+                  >
+                    <span className="drawer-icon">{item.icon}</span>
+                    <span className="drawer-label">{item.label}</span>
+                  </Link>
+                )
+              })}
+            </div>
+            
+            <div className="mobile-drawer-actions">
+              <button className="btn-import" onClick={() => { setShowImport(true); setShowMobileMore(false); }}>
+                📥 Import Excel
+              </button>
+              <button 
+                className="btn-import" 
+                style={{ background: 'var(--red)', borderColor: 'var(--red)', color: '#fff' }}
+                onClick={async () => {
+                  const { logout } = await import('@/app/login/actions')
+                  await logout()
+                }}
+              >
+                🚪 Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showImport && <ImportModal month={month} onClose={() => setShowImport(false)} />}
     </>
