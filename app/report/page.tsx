@@ -66,7 +66,7 @@ function ReportPageInner() {
     setPreviousBalances(pBals)
     
     // Check if this month is already locked
-    const isLocked = currBalsRes.data && currBalsRes.data.length > 0
+    const isLocked = Boolean(currBalsRes.data && currBalsRes.data.length > 0)
     // We will need to set this in state
     setIsLocked(isLocked)
     
