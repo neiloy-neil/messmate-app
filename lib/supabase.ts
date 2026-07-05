@@ -53,6 +53,7 @@ export interface IndividualRent {
 
 export interface SharedBills {
   id: string
+  user_id: string
   month: string
   gas: number
   electricity: number
@@ -60,5 +61,14 @@ export interface SharedBills {
   water: number
   cleaner: number
   maid: number
+  created_at: string
+}
+
+export interface MonthlyBalance {
+  id: string
+  user_id: string
+  member_id: string
+  month: string
+  balance: number
   created_at: string
 }

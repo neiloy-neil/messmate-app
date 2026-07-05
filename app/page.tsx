@@ -33,11 +33,9 @@ function DashboardPageInner() {
     setLoading(true)
     const start = `${month}-01`, end = `${month}-${getDaysInMonth(month)}`
     const prevMonth = getPreviousMonth(month)
-    const pStart = `${prevMonth}-01`, pEnd = `${prevMonth}-${getDaysInMonth(prevMonth)}`
 
     const [
-      m, ml, sh, dep, ut, ir, sb,
-      pml, psh, pdep, put, pir, psb
+      m, ml, sh, dep, ut, ir, sb, prevBalsRes
     ] = await Promise.all([
       supabase.from('members').select('*').order('created_at'),
       supabase.from('meals').select('*').gte('date', start).lte('date', end),
@@ -46,13 +44,7 @@ function DashboardPageInner() {
       supabase.from('utility').select('*').gte('date', start).lte('date', end),
       supabase.from('individual_rent').select('*').eq('month', month),
       supabase.from('shared_bills').select('*').eq('month', month),
-      // Prev month
-      supabase.from('meals').select('*').gte('date', pStart).lte('date', pEnd),
-      supabase.from('shopping').select('*').gte('date', pStart).lte('date', pEnd),
-      supabase.from('deposits').select('*').gte('date', pStart).lte('date', pEnd),
-      supabase.from('utility').select('*').gte('date', pStart).lte('date', pEnd),
-      supabase.from('individual_rent').select('*').eq('month', prevMonth),
-      supabase.from('shared_bills').select('*').eq('month', prevMonth)
+      supabase.from('monthly_balances').select('*').eq('month', prevMonth)
     ])
     
     const membersList = m.data || []
@@ -64,10 +56,12 @@ function DashboardPageInner() {
     setRents(ir.data || [])
     setShared(sb.data || [])
 
-    // Compute previous month summary to get balances
-    const prevSum = computeSummary(membersList, pml.data||[], psh.data||[], pdep.data||[], put.data||[], pir.data||[], psb.data||[])
     const pBals: Record<string, number> = {}
-    prevSum.members.forEach(s => { pBals[s.member.id] = s.balance })
+    if (prevBalsRes.data) {
+      prevBalsRes.data.forEach((b: any) => {
+        pBals[b.member_id] = Number(b.balance)
+      })
+    }
     setPreviousBalances(pBals)
     
     setLoading(false)

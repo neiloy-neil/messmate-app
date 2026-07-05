@@ -113,6 +113,21 @@ CREATE POLICY "Users can manage their own rent"     ON individual_rent FOR ALL U
 CREATE POLICY "Users can manage their own shared bills" ON shared_bills FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- ============================================================
+-- Month Locking (Final Balances)
+-- ============================================================
+CREATE TABLE monthly_balances (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
+  member_id  UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  month      TEXT NOT NULL,
+  balance    NUMERIC(10,2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(member_id, month)
+);
+ALTER TABLE monthly_balances ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own balances" ON monthly_balances FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- ============================================================
 -- Enable Realtime for all tables
 -- ============================================================
 ALTER PUBLICATION supabase_realtime ADD TABLE members;
@@ -122,4 +137,5 @@ ALTER PUBLICATION supabase_realtime ADD TABLE deposits;
 ALTER PUBLICATION supabase_realtime ADD TABLE utility;
 ALTER PUBLICATION supabase_realtime ADD TABLE individual_rent;
 ALTER PUBLICATION supabase_realtime ADD TABLE shared_bills;
+ALTER PUBLICATION supabase_realtime ADD TABLE monthly_balances;
 

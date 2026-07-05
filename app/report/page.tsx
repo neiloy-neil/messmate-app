@@ -19,7 +19,9 @@ function ReportPageInner() {
   const [rents, setRents] = useState<any[]>([])
   const [shared, setShared] = useState<any[]>([])
   const [previousBalances, setPreviousBalances] = useState<Record<string, number>>({})
+  const [isLocked, setIsLocked] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [locking, setLocking] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -29,7 +31,8 @@ function ReportPageInner() {
 
     const [
       m, ml, sh, dep, ut, ir, sb,
-      pml, psh, pdep, put, pir, psb
+      prevBalsRes,
+      currBalsRes
     ] = await Promise.all([
       supabase.from('members').select('*').order('created_at'),
       supabase.from('meals').select('*').gte('date', start).lte('date', end),
@@ -38,13 +41,10 @@ function ReportPageInner() {
       supabase.from('utility').select('*').gte('date', start).lte('date', end),
       supabase.from('individual_rent').select('*').eq('month', month),
       supabase.from('shared_bills').select('*').eq('month', month),
-      // Prev month
-      supabase.from('meals').select('*').gte('date', pStart).lte('date', pEnd),
-      supabase.from('shopping').select('*').gte('date', pStart).lte('date', pEnd),
-      supabase.from('deposits').select('*').gte('date', pStart).lte('date', pEnd),
-      supabase.from('utility').select('*').gte('date', pStart).lte('date', pEnd),
-      supabase.from('individual_rent').select('*').eq('month', prevMonth),
-      supabase.from('shared_bills').select('*').eq('month', prevMonth)
+      // Fetch previous month's locked balances
+      supabase.from('monthly_balances').select('*').eq('month', prevMonth),
+      // Fetch current month's locked balances to see if already locked
+      supabase.from('monthly_balances').select('*').eq('month', month)
     ])
     
     const membersList = m.data || []
@@ -56,10 +56,19 @@ function ReportPageInner() {
     setRents(ir.data || [])
     setShared(sb.data || [])
 
-    const prevSum = computeSummary(membersList, pml.data||[], psh.data||[], pdep.data||[], put.data||[], pir.data||[], psb.data||[])
+    // Map previous locked balances
     const pBals: Record<string, number> = {}
-    prevSum.members.forEach(s => { pBals[s.member.id] = s.balance })
+    if (prevBalsRes.data) {
+      prevBalsRes.data.forEach((b: any) => {
+        pBals[b.member_id] = Number(b.balance)
+      })
+    }
     setPreviousBalances(pBals)
+    
+    // Check if this month is already locked
+    const isLocked = currBalsRes.data && currBalsRes.data.length > 0
+    // We will need to set this in state
+    setIsLocked(isLocked)
     
     setLoading(false)
   }, [month])
@@ -94,6 +103,27 @@ function ReportPageInner() {
     toast.success('Report exported!')
   }
 
+  async function lockMonth() {
+    if (!confirm(`Are you sure you want to lock the month of ${monthLabel(month)}? This will permanently save everyone's final carry-over balances.`)) return
+    
+    setLocking(true)
+    const toInsert = summary.members.map(s => ({
+      member_id: s.member.id,
+      month: month,
+      balance: s.balance
+    }))
+    
+    const { error } = await supabase.from('monthly_balances').upsert(toInsert, { onConflict: 'member_id,month' })
+    setLocking(false)
+    
+    if (error) {
+      toast.error('Failed to lock month: ' + error.message)
+    } else {
+      toast.success('Month Locked! Balances saved.')
+      setIsLocked(true)
+    }
+  }
+
   if (loading) return <div className="page"><div className="spinner" /></div>
 
   const { totalMeals, totalShopping, totalDeposit, totalUtility, totalRent, totalSharedBills, mealRate, members: summaries } = summary
@@ -104,10 +134,20 @@ function ReportPageInner() {
     <div className="page">
       <div style={{ marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800 }}>Final Report</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 800 }}>
+            Final Report
+            {isLocked && <span style={{ marginLeft: 8, fontSize: 12, background: 'var(--surface-sunken)', color: 'var(--text-main)', padding: '4px 8px', borderRadius: 12, verticalAlign: 'middle' }}>🔒 Locked</span>}
+          </h1>
           <p className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>{monthLabel(month)} — complete financial summary</p>
         </div>
-        <button className="btn btn-primary" onClick={exportExcel}>📤 Export Excel</button>
+        <div style={{ display: 'flex', gap: '8px', flexDirection: 'column', alignItems: 'flex-end' }}>
+          <button className="btn btn-primary" onClick={exportExcel}>📤 Export Excel</button>
+          {!isLocked && (
+            <button className="btn" style={{ background: 'var(--red)', color: 'white', borderColor: 'var(--red)', width: '100%' }} onClick={lockMonth} disabled={locking}>
+              {locking ? 'Locking...' : '🔒 Lock Month'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stats */}
