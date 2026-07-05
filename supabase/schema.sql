@@ -40,13 +40,13 @@ CREATE TABLE shopping (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Deposits table (money deposited by member per day)
 CREATE TABLE deposits (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id    UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
   member_id  UUID NOT NULL REFERENCES members(id) ON DELETE CASCADE,
   date       DATE NOT NULL,
   amount     NUMERIC(10,2) NOT NULL DEFAULT 0,
+  is_prev_due BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(member_id, date)
 );

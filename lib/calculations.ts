@@ -13,6 +13,9 @@ export interface MemberSummary {
   lateFine: number
   totalDue: number
   balance: number
+  payableNow: number
+  unbilledMeals: number
+  prevDueDeposits: number
 }
 
 export interface MonthSummary {
@@ -25,6 +28,8 @@ export interface MonthSummary {
   totalSharedBills: number
   totalLateFines: number
   mealRate: number
+  totalPayableNow: number
+  totalUnbilledMeals: number
 }
 
 export function computeSummary(
@@ -58,6 +63,9 @@ export function computeSummary(
       lateFine: 0,
       totalDue: 0,
       balance: prevBal > 0 ? prevBal : 0, // carry forward positive balance
+      payableNow: 0,
+      unbilledMeals: 0,
+      prevDueDeposits: 0
     }
   })
 
@@ -68,7 +76,13 @@ export function computeSummary(
     if (memberMap[r.member_id]) memberMap[r.member_id].shopping += Number(r.amount)
   })
   deposits.forEach(r => {
-    if (memberMap[r.member_id]) memberMap[r.member_id].deposit += Number(r.amount)
+    if (memberMap[r.member_id]) {
+      if (r.is_prev_due) {
+        memberMap[r.member_id].prevDueDeposits += Number(r.amount)
+      } else {
+        memberMap[r.member_id].deposit += Number(r.amount)
+      }
+    }
   })
   individualRents.forEach(r => {
     if (memberMap[r.member_id]) memberMap[r.member_id].rent += Number(r.amount)
@@ -116,9 +130,17 @@ export function computeSummary(
     d.sharedBillShare = Math.ceil(sharedBillShare)
     d.mealCost = Math.ceil(d.meals * mealRate)
     
-    // totalDue includes this month's expenses + previous due + late fines
-    d.totalDue = d.mealCost + d.utilityShare + d.rent + d.sharedBillShare + d.previousDue + Math.ceil(d.lateFine)
-    // balance = (carried over positive balance) + new deposit - totalDue
+    // Calculate how to apply prevDueDeposits
+    const origPrevDue = d.previousDue
+    d.previousDue = Math.max(0, origPrevDue - d.prevDueDeposits)
+    const excessPrevDueDep = Math.max(0, d.prevDueDeposits - origPrevDue)
+    d.deposit += excessPrevDueDep // Any overpayment towards previous due spills into regular deposit
+
+    d.unbilledMeals = d.mealCost
+    d.payableNow = d.utilityShare + d.rent + d.sharedBillShare + d.previousDue + Math.ceil(d.lateFine)
+    d.totalDue = d.payableNow + d.unbilledMeals
+    
+    // balance = (carried over positive balance) + new regular deposit - totalDue
     d.balance = d.balance + d.deposit - d.totalDue
   })
 
@@ -132,6 +154,8 @@ export function computeSummary(
     totalSharedBills,
     totalLateFines,
     mealRate,
+    totalPayableNow: Object.values(memberMap).reduce((s, d) => s + d.payableNow, 0),
+    totalUnbilledMeals: Object.values(memberMap).reduce((s, d) => s + d.unbilledMeals, 0)
   }
 }
 

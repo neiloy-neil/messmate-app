@@ -28,9 +28,11 @@ export interface Shopping {
 
 export interface Deposit {
   id: string
+  user_id: string
   member_id: string
   date: string
   amount: number
+  is_prev_due?: boolean
   created_at: string
 }
 

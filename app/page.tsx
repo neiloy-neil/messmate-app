@@ -28,6 +28,7 @@ function DashboardPageInner() {
   const [showPayment, setShowPayment] = useState(false)
   const [paymentMember, setPaymentMember] = useState('')
   const [paymentAmount, setPaymentAmount] = useState('')
+  const [isPrevDuePayment, setIsPrevDuePayment] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -85,7 +86,8 @@ function DashboardPageInner() {
       user_id: user.id,
       member_id: paymentMember,
       amount: Number(paymentAmount),
-      date: dStr
+      date: dStr,
+      is_prev_due: isPrevDuePayment
     })
 
     setIsSaving(false)
@@ -94,6 +96,7 @@ function DashboardPageInner() {
       setShowPayment(false)
       setPaymentAmount('')
       setPaymentMember('')
+      setIsPrevDuePayment(false)
       load()
     } else {
       toast.error('Failed to save payment: ' + error.message)
@@ -132,6 +135,10 @@ function DashboardPageInner() {
               <div className="form-group">
                 <label className="form-label">Amount Paid (৳)</label>
                 <input type="number" className="form-input" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} required />
+              </div>
+              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}>
+                <input type="checkbox" id="is_prev_due" checked={isPrevDuePayment} onChange={e => setIsPrevDuePayment(e.target.checked)} />
+                <label htmlFor="is_prev_due" style={{ marginBottom: 0, fontWeight: 'normal' }}>This payment is to settle last month's due</label>
               </div>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setShowPayment(false)} disabled={isSaving}>Cancel</button>

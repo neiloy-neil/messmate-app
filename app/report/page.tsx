@@ -110,7 +110,8 @@ function ReportPageInner() {
     const toInsert = summary.members.map(s => ({
       member_id: s.member.id,
       month: month,
-      balance: s.balance
+      balance: s.balance - s.unbilledMeals // Wait, lock balance is their total carry over for NEXT month. Unbilled meals BECOMES payable next month! So it's part of their balance!
+      // Actually, if Balance currently includes Unbilled Meals (Balance = Deposit - Total Due), then we just carry over s.balance exactly.
     }))
     
     const { error } = await supabase.from('monthly_balances').upsert(toInsert, { onConflict: 'member_id,month' })
@@ -197,13 +198,13 @@ function ReportPageInner() {
                   <th>Member</th>
                   <th className="text-center">Meals</th>
                   <th className="text-right">Meal Rate</th>
-                  <th className="text-right">Meal Cost</th>
                   <th className="text-right">Rent</th>
                   <th className="text-right">Shared Bills</th>
                   <th className="text-right">Misc Util</th>
                   <th className="text-right">Prev Due</th>
                   <th className="text-right">Late Fine</th>
-                  <th className="text-right">Total Due</th>
+                  <th className="text-right font-bold text-red">Payable Now</th>
+                  <th className="text-right">Unbilled Meals</th>
                   <th className="text-right">Deposit</th>
                   <th className="text-right">Balance</th>
                 </tr>
@@ -216,13 +217,13 @@ function ReportPageInner() {
                       <td><div className="member-row"><MemberAvatar name={s.member.name} index={i} /><span className="member-name">{s.member.name}</span></div></td>
                       <td className="text-center">{s.meals}</td>
                       <td className="text-right text-muted">{fmt(mealRate, 2)}</td>
-                      <td className="text-right">{fmt(s.mealCost)}</td>
                       <td className="text-right">{fmt(s.rent)}</td>
                       <td className="text-right">{fmt(s.sharedBillShare)}</td>
                       <td className="text-right">{fmt(s.utilityShare)}</td>
                       <td className="text-right" style={{ color: s.previousDue > 0 ? 'var(--red)' : '' }}>{s.previousDue > 0 ? fmt(s.previousDue) : '-'}</td>
                       <td className="text-right" style={{ color: s.lateFine > 0 ? 'var(--red)' : '', fontWeight: s.lateFine > 0 ? 'bold' : 'normal' }}>{s.lateFine > 0 ? fmt(s.lateFine) : '-'}</td>
-                      <td className="text-right font-bold">{fmt(s.totalDue)}</td>
+                      <td className="text-right font-bold text-red" style={{ fontSize: 14 }}>{fmt(s.payableNow)}</td>
+                      <td className="text-right text-muted">{fmt(s.unbilledMeals)}</td>
                       <td className="text-right">{fmt(s.deposit)}</td>
                       <td className={`text-right font-bold ${bal >= 0 ? 'text-green' : 'text-red'}`} style={{ fontSize: 15 }}>
                         {bal >= 0 ? '+' : ''}{fmt(bal)}
@@ -236,13 +237,13 @@ function ReportPageInner() {
                   <td style={{ fontWeight: 700 }}>TOTAL</td>
                   <td className="text-center">{totalMeals}</td>
                   <td />
-                  <td className="text-right">{fmt(summaries.reduce((s, x) => s + x.mealCost, 0))}</td>
                   <td className="text-right">{fmt(totalRent)}</td>
                   <td className="text-right">{fmt(totalSharedBills)}</td>
                   <td className="text-right">{fmt(totalUtility)}</td>
                   <td className="text-right">{fmt(summaries.reduce((s, x) => s + x.previousDue, 0))}</td>
                   <td className="text-right">{fmt(summary.totalLateFines)}</td>
-                  <td className="text-right">{fmt(totalDue)}</td>
+                  <td className="text-right font-bold text-red">{fmt(summary.totalPayableNow)}</td>
+                  <td className="text-right text-muted">{fmt(summary.totalUnbilledMeals)}</td>
                   <td className="text-right">{fmt(totalDeposit)}</td>
                   <td className={`text-right font-bold ${netBalance >= 0 ? 'text-green' : 'text-red'}`} style={{ fontSize: 15 }}>
                     {netBalance >= 0 ? '+' : ''}{fmt(netBalance)}
