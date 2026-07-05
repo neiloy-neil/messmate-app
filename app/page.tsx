@@ -29,6 +29,8 @@ function DashboardPageInner() {
   const [paymentMember, setPaymentMember] = useState('')
   const [paymentAmount, setPaymentAmount] = useState('')
   const [isPrevDuePayment, setIsPrevDuePayment] = useState(false)
+  const [isManager, setIsManager] = useState(true)
+  const [myPermissions, setMyPermissions] = useState({ can_add_meals: true, can_add_shopping: true, can_add_deposits: true })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -48,6 +50,8 @@ function DashboardPageInner() {
       supabase.from('monthly_balances').select('*').eq('month', prevMonth)
     ])
     
+    const { data: { user } } = await supabase.auth.getUser()
+    
     const membersList = m.data || []
     setMembers(membersList)
     setMeals(ml.data || [])
@@ -64,6 +68,24 @@ function DashboardPageInner() {
       })
     }
     setPreviousBalances(pBals)
+    
+    // RBAC
+    if (user && membersList) {
+      const isMgr = membersList.length === 0 || membersList.some(m => m.auth_id === user.id && m.is_admin)
+      setIsManager(isMgr)
+      if (!isMgr) {
+        const me = membersList.find(m => m.auth_id === user.id)
+        if (me) {
+          setMyPermissions({
+            can_add_meals: !!me.can_add_meals,
+            can_add_shopping: !!me.can_add_shopping,
+            can_add_deposits: !!me.can_add_deposits,
+          })
+        }
+      } else {
+        setMyPermissions({ can_add_meals: true, can_add_shopping: true, can_add_deposits: true })
+      }
+    }
     
     setLoading(false)
   }, [month])
@@ -115,7 +137,9 @@ function DashboardPageInner() {
           <p className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>{monthLabel(month)} overview</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button className="btn btn-secondary" style={{ borderColor: 'var(--green)' }} onClick={() => setShowPayment(true)}>💰 Receive</button>
+          {myPermissions.can_add_deposits && (
+            <button className="btn btn-secondary" style={{ borderColor: 'var(--green)' }} onClick={() => setShowPayment(true)}>💰 Receive</button>
+          )}
           <Link href={`/report?month=${month}`} className="btn btn-primary">Report →</Link>
         </div>
       </div>

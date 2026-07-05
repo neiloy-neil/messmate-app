@@ -5,7 +5,13 @@ export const supabase = createClient()
 // ── Types ──────────────────────────────────────────────
 export interface Member {
   id: string
+  user_id: string
+  auth_id?: string
+  email?: string
   name: string
+  can_add_meals?: boolean
+  can_add_shopping?: boolean
+  can_add_deposits?: boolean
   created_at: string
 }
 

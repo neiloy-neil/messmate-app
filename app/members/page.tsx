@@ -17,8 +17,16 @@ function MembersPageInner() {
   const [utilities, setUtilities] = useState<Utility[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState<Member | null>(null)
   const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
+  
+  // Edit State
+  const [editPerms, setEditPerms] = useState({ can_add_meals: false, can_add_shopping: false, can_add_deposits: false })
+  
+  const { data: userObj } = supabase.auth.useUser ? supabase.auth.useUser() : { data: null }
+  const [isManager, setIsManager] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -36,6 +44,12 @@ function MembersPageInner() {
     setDeposits(dep.data || [])
     setUtilities(ut.data || [])
     setLoading(false)
+    
+    // Check if manager
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user && m.data) {
+       setIsManager(m.data.length === 0 || m.data[0].user_id === user.id)
+    }
   }, [month])
 
   useEffect(() => { load() }, [load])
@@ -47,12 +61,30 @@ function MembersPageInner() {
     if (!n) { toast.error('Enter a name'); return }
     if (members.some(m => m.name.toLowerCase() === n.toLowerCase())) { toast.error('Member already exists'); return }
     setSaving(true)
-    const { error } = await supabase.from('members').insert({ name: n })
+    const payload: any = { name: n }
+    if (email.trim()) payload.email = email.trim()
+    const { error } = await supabase.from('members').insert(payload)
     setSaving(false)
     if (error) { toast.error('Failed: ' + error.message); return }
     setName('')
+    setEmail('')
     setShowModal(false)
     toast.success(`${n} added ✓`)
+    load()
+  }
+
+  async function updatePermissions() {
+    if (!showEditModal) return
+    setSaving(true)
+    const { error } = await supabase.from('members').update({
+      can_add_meals: editPerms.can_add_meals,
+      can_add_shopping: editPerms.can_add_shopping,
+      can_add_deposits: editPerms.can_add_deposits,
+    }).eq('id', showEditModal.id)
+    setSaving(false)
+    if (error) { toast.error('Failed: ' + error.message); return }
+    setShowEditModal(null)
+    toast.success('Permissions updated')
     load()
   }
 
@@ -73,7 +105,9 @@ function MembersPageInner() {
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>Members</h1>
           <p className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>{monthLabel(month)} stats — manage your mess members</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ Add Member</button>
+        {isManager && (
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ Add Member</button>
+        )}
       </div>
 
       {members.length === 0 ? (
@@ -124,9 +158,26 @@ function MembersPageInner() {
                   </div>
                 </div>
                 <div className="mc-actions">
-                  <button className="btn btn-danger btn-sm" onClick={() => deleteMember(s.member.id, s.member.name)}>
-                    🗑 Remove
-                  </button>
+                  {isManager && (
+                    <>
+                      <button 
+                        className="btn btn-secondary btn-sm" 
+                        onClick={() => {
+                          setEditPerms({
+                            can_add_meals: !!s.member.can_add_meals,
+                            can_add_shopping: !!s.member.can_add_shopping,
+                            can_add_deposits: !!s.member.can_add_deposits,
+                          })
+                          setShowEditModal(s.member)
+                        }}
+                      >
+                        ⚙️ Permissions
+                      </button>
+                      <button className="btn btn-danger btn-sm" onClick={() => deleteMember(s.member.id, s.member.name)}>
+                        🗑
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )
@@ -146,13 +197,54 @@ function MembersPageInner() {
                 className="form-input" type="text" placeholder="e.g. Farhad Ahmed"
                 value={name} autoFocus
                 onChange={e => setName(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Email Address (Optional)</label>
+              <input
+                className="form-input" type="email" placeholder="Required if they want to log in"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addMember()}
               />
+              <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>If provided, they can sign up with this email to access their dashboard.</p>
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={addMember} disabled={saving}>
                 {saving ? '⏳ Adding...' : 'Add Member'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Permissions Modal */}
+      {showEditModal && (
+        <div className="modal-bg" onClick={e => e.target === e.currentTarget && setShowEditModal(null)}>
+          <div className="modal">
+            <div className="modal-title">{showEditModal.name}'s Permissions</div>
+            <div className="modal-sub">Toggle what they can do when logged in</div>
+            
+            <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                <input type="checkbox" checked={editPerms.can_add_meals} onChange={e => setEditPerms(p => ({...p, can_add_meals: e.target.checked}))} />
+                <span style={{ fontSize: 14 }}>Can log their own daily meals</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                <input type="checkbox" checked={editPerms.can_add_shopping} onChange={e => setEditPerms(p => ({...p, can_add_shopping: e.target.checked}))} />
+                <span style={{ fontSize: 14 }}>Can add grocery shopping expenses</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                <input type="checkbox" checked={editPerms.can_add_deposits} onChange={e => setEditPerms(p => ({...p, can_add_deposits: e.target.checked}))} />
+                <span style={{ fontSize: 14 }}>Can request/add deposits</span>
+              </label>
+            </div>
+
+            <div className="modal-footer" style={{ marginTop: 24 }}>
+              <button className="btn btn-secondary" onClick={() => setShowEditModal(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={updatePermissions} disabled={saving}>
+                {saving ? '⏳ Saving...' : 'Save Permissions'}
               </button>
             </div>
           </div>
