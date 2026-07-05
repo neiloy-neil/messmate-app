@@ -25,7 +25,6 @@ function MembersPageInner() {
   // Edit State
   const [editPerms, setEditPerms] = useState({ can_add_meals: false, can_add_shopping: false, can_add_deposits: false })
   
-  const { data: userObj } = supabase.auth.useUser ? supabase.auth.useUser() : { data: null }
   const [isManager, setIsManager] = useState(true)
 
   const load = useCallback(async () => {
