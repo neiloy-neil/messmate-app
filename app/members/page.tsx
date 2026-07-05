@@ -21,6 +21,7 @@ function MembersPageInner() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
+  const [showHidden, setShowHidden] = useState(false)
   
   // Edit State
   const [editPerms, setEditPerms] = useState({ can_add_meals: false, can_add_shopping: false, can_add_deposits: false })
@@ -87,13 +88,36 @@ function MembersPageInner() {
     load()
   }
 
-  async function deleteMember(id: string, memberName: string) {
-    if (!confirm(`Remove ${memberName}? All their data for all months will be deleted.`)) return
-    const { error } = await supabase.from('members').delete().eq('id', id)
+  async function archiveMember(id: string, memberName: string, currentHidden: string[] = []) {
+    if (!confirm(`Remove ${memberName} from this month (${month})? Their previous data will remain intact.`)) return
+    const newHidden = [...new Set([...currentHidden, month])]
+    const { error } = await supabase.from('members').update({ hidden_months: newHidden }).eq('id', id)
     if (error) { toast.error('Failed: ' + error.message); return }
-    toast.info(`${memberName} removed`)
+    toast.info(`${memberName} removed from ${month}`)
     load()
   }
+
+  async function restoreMember(id: string, memberName: string, currentHidden: string[] = []) {
+    const newHidden = currentHidden.filter(m => m !== month)
+    const { error } = await supabase.from('members').update({ hidden_months: newHidden }).eq('id', id)
+    if (error) { toast.error('Failed: ' + error.message); return }
+    toast.success(`${memberName} restored for ${month}`)
+    load()
+  }
+
+  async function deleteMember(id: string, memberName: string) {
+    if (!confirm(`HARD DELETE: Are you sure you want to completely destroy ${memberName} and wipe ALL their data across all months forever?`)) return
+    const { error } = await supabase.from('members').delete().eq('id', id)
+    if (error) { toast.error('Failed: ' + error.message); return }
+    toast.info(`${memberName} permanently destroyed`)
+    load()
+  }
+
+  // Filter members based on toggle
+  const visibleMembers = members.filter(m => {
+    const isHidden = m.hidden_months?.includes(month)
+    return showHidden ? true : !isHidden
+  })
 
   if (loading) return <div className="page"><div className="spinner" /></div>
 
@@ -104,12 +128,18 @@ function MembersPageInner() {
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>Members</h1>
           <p className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>{monthLabel(month)} stats — manage your mess members</p>
         </div>
-        {isManager && (
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ Add Member</button>
-        )}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', marginRight: 10 }}>
+            <input type="checkbox" checked={showHidden} onChange={e => setShowHidden(e.target.checked)} />
+            Show Hidden
+          </label>
+          {isManager && (
+            <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ Add Member</button>
+          )}
+        </div>
       </div>
 
-      {members.length === 0 ? (
+      {visibleMembers.length === 0 ? (
         <div className="card">
           <div className="empty">
             <div className="icon">👥</div>
@@ -119,11 +149,13 @@ function MembersPageInner() {
         </div>
       ) : (
         <div className="members-grid">
-          {summary.members.map((s, i) => {
+          {summary.members.filter(s => visibleMembers.some(vm => vm.id === s.member.id)).map((s, i) => {
             const bal = s.balance
             const color = AVATAR_COLORS[i % AVATAR_COLORS.length]
+            const isHidden = s.member.hidden_months?.includes(month)
+
             return (
-              <div key={s.member.id} className="member-card">
+              <div key={s.member.id} className="member-card" style={{ opacity: isHidden ? 0.6 : 1 }}>
                 <div className="mc-header">
                   <div
                     className="avatar"
@@ -132,7 +164,7 @@ function MembersPageInner() {
                     {getInitials(s.member.name)}
                   </div>
                   <div>
-                    <div className="mc-name">{s.member.name}</div>
+                    <div className="mc-name">{s.member.name} {isHidden && '(Hidden)'}</div>
                     <div className="mc-since">Since {new Date(s.member.created_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}</div>
                   </div>
                 </div>
@@ -156,7 +188,7 @@ function MembersPageInner() {
                     <div className="mc-stat-label">Balance</div>
                   </div>
                 </div>
-                <div className="mc-actions">
+                <div className="mc-actions" style={{ flexWrap: 'wrap' }}>
                   {isManager && (
                     <>
                       <button 
@@ -170,11 +202,22 @@ function MembersPageInner() {
                           setShowEditModal(s.member)
                         }}
                       >
-                        ⚙️ Permissions
+                        ⚙️ Perms
                       </button>
-                      <button className="btn btn-danger btn-sm" onClick={() => deleteMember(s.member.id, s.member.name)}>
-                        🗑
-                      </button>
+                      {isHidden ? (
+                        <button className="btn btn-secondary btn-sm" style={{ color: 'var(--green)', borderColor: 'var(--green)' }} onClick={() => restoreMember(s.member.id, s.member.name, s.member.hidden_months)}>
+                          ♻️ Restore
+                        </button>
+                      ) : (
+                        <button className="btn btn-secondary btn-sm" onClick={() => archiveMember(s.member.id, s.member.name, s.member.hidden_months)}>
+                          🗑 Remove
+                        </button>
+                      )}
+                      {isHidden && (
+                         <button className="btn btn-danger btn-sm" title="Permanently Delete" onClick={() => deleteMember(s.member.id, s.member.name)}>
+                           ⚠️ Destroy
+                         </button>
+                      )}
                     </>
                   )}
                 </div>

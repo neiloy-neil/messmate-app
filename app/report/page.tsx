@@ -57,13 +57,17 @@ function ReportPageInner() {
     setShared(sb.data || [])
 
     // Map previous locked balances
-    const pBals: Record<string, number> = {}
-    if (prevBalsRes.data) {
-      prevBalsRes.data.forEach((b: any) => {
-        pBals[b.member_id] = Number(b.balance)
-      })
-    }
+    const pBals = prevBalsRes.data ? Object.fromEntries(prevBalsRes.data.map((b:any) => [b.member_id, b.balance])) : {}
     setPreviousBalances(pBals)
+
+    // Filter active members for this month
+    const visibleMembers = membersList.filter(m => {
+      const isHidden = m.hidden_months?.includes(month)
+      if (!isHidden) return true
+      const prevBal = pBals[m.id] || 0
+      return prevBal < 0 // Show them if they owe money from previous months
+    })
+    setMembers(visibleMembers)
     
     // Check if this month is already locked
     const isLocked = Boolean(currBalsRes.data && currBalsRes.data.length > 0)

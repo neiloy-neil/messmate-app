@@ -23,7 +23,8 @@ function MealsPageInner() {
       supabase.from('members').select('*').order('created_at'),
       supabase.from('meals').select('*').gte('date', `${month}-01`).lte('date', `${month}-${getDaysInMonth(month)}`),
     ])
-    const mems: Member[] = mRes.data || []
+    const allMems: Member[] = mRes.data || []
+    const mems = allMems.filter(m => !m.hidden_months?.includes(month))
     const data = dataRes.data || []
     const days = getDaysInMonth(month)
     const grid: Row[] = []

@@ -29,7 +29,8 @@ function BillsPageInner() {
       supabase.from('individual_rent').select('*').eq('month', month)
     ])
     
-    setMembers(mRes.data || [])
+    const allMems = mRes.data || []
+    setMembers(allMems.filter(m => !m.hidden_months?.includes(month)))
     
     if (sbRes.data) {
       setShared({

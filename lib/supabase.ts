@@ -9,6 +9,7 @@ export interface Member {
   auth_id?: string
   email?: string
   name: string
+  hidden_months?: string[]
   can_add_meals?: boolean
   can_add_shopping?: boolean
   can_add_deposits?: boolean

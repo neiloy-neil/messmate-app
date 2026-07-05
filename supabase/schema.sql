@@ -17,6 +17,7 @@ CREATE TABLE members (
   auth_id    UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
   email      TEXT UNIQUE,
   name       TEXT NOT NULL,
+  hidden_months TEXT[] DEFAULT '{}',
   can_add_meals BOOLEAN DEFAULT false,
   can_add_shopping BOOLEAN DEFAULT false,
   can_add_deposits BOOLEAN DEFAULT false,

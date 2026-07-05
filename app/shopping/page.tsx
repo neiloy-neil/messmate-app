@@ -29,7 +29,8 @@ function ShoppingPageInner() {
       supabase.from('members').select('*').order('created_at'),
       supabase.from('shopping').select('*').gte('date', start).lte('date', end).order('date', { ascending: false }).order('created_at', { ascending: false }),
     ])
-    setMembers(mRes.data || [])
+    const allMems = mRes.data || []
+    setMembers(allMems.filter(m => !m.hidden_months?.includes(month)))
     setShopping(dataRes.data || [])
     
     // Default form date to today if in current month, else 1st of month

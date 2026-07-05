@@ -69,6 +69,15 @@ function DashboardPageInner() {
     }
     setPreviousBalances(pBals)
     
+    // Filter active members for this month
+    const visibleMembers = membersList.filter(m => {
+      const isHidden = m.hidden_months?.includes(month)
+      if (!isHidden) return true
+      const prevBal = pBals[m.id] || 0
+      return prevBal < 0 // Show them if they owe money from previous months
+    })
+    setMembers(visibleMembers)
+    
     // RBAC
     if (user && membersList) {
       const isMgr = membersList.length === 0 || membersList.some(m => m.auth_id === user.id && m.is_admin)
