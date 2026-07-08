@@ -114,8 +114,7 @@ function ReportPageInner() {
     const toInsert = summary.members.map(s => ({
       member_id: s.member.id,
       month: month,
-      balance: s.balance - s.unbilledMeals // Wait, lock balance is their total carry over for NEXT month. Unbilled meals BECOMES payable next month! So it's part of their balance!
-      // Actually, if Balance currently includes Unbilled Meals (Balance = Deposit - Total Due), then we just carry over s.balance exactly.
+      balance: s.balance // Balance already factors in the Unbilled Meals via Total Due.
     }))
     
     const { error } = await supabase.from('monthly_balances').upsert(toInsert, { onConflict: 'member_id,month' })
