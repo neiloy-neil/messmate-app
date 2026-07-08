@@ -129,6 +129,21 @@ function ReportPageInner() {
     }
   }
 
+  async function unlockMonth() {
+    if (!confirm(`Are you sure you want to unlock the month of ${monthLabel(month)}? This will remove the saved carry-over balances for next month.`)) return
+    
+    setLocking(true)
+    const { error } = await supabase.from('monthly_balances').delete().eq('month', month)
+    setLocking(false)
+    
+    if (error) {
+      toast.error('Failed to unlock month: ' + error.message)
+    } else {
+      toast.success('Month Unlocked!')
+      setIsLocked(false)
+    }
+  }
+
   if (loading) return <div className="page"><div className="spinner" /></div>
 
   const { totalMeals, totalShopping, totalDeposit, totalUtility, totalRent, totalSharedBills, mealRate, members: summaries } = summary
@@ -147,9 +162,13 @@ function ReportPageInner() {
         </div>
         <div style={{ display: 'flex', gap: '8px', flexDirection: 'column', alignItems: 'flex-end' }}>
           <button className="btn btn-primary" onClick={exportExcel}>📤 Export Excel</button>
-          {!isLocked && (
+          {!isLocked ? (
             <button className="btn" style={{ background: 'var(--red)', color: 'white', borderColor: 'var(--red)', width: '100%' }} onClick={lockMonth} disabled={locking}>
               {locking ? 'Locking...' : '🔒 Lock Month'}
+            </button>
+          ) : (
+            <button className="btn btn-secondary" style={{ width: '100%', borderColor: 'var(--border)' }} onClick={unlockMonth} disabled={locking}>
+              {locking ? 'Unlocking...' : '🔓 Unlock Month'}
             </button>
           )}
         </div>
