@@ -3,7 +3,7 @@ import { Suspense } from 'react'
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase, Member, Meal, Shopping, Deposit, Utility } from '@/lib/supabase'
-import { computeSummary, monthLabel, currentYM, fmt, AVATAR_COLORS, getInitials, getDaysInMonth } from '@/lib/calculations'
+import { computeSummary, monthLabel, currentYM, fmt, AVATAR_COLORS, getInitials, getDaysInMonth, getPreviousMonth } from '@/lib/calculations'
 import { MemberAvatar } from '@/components/MemberAvatar'
 import { toast } from '@/components/ToastProvider'
 
@@ -15,6 +15,7 @@ function MembersPageInner() {
   const [shopping, setShopping] = useState<Shopping[]>([])
   const [deposits, setDeposits] = useState<Deposit[]>([])
   const [utilities, setUtilities] = useState<Utility[]>([])
+  const [previousBalances, setPreviousBalances] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState<Member | null>(null)
@@ -32,18 +33,24 @@ function MembersPageInner() {
   const load = useCallback(async () => {
     setLoading(true)
     const start = `${month}-01`, end = `${month}-${getDaysInMonth(month)}`
-    const [m, ml, sh, dep, ut] = await Promise.all([
+    const prevMonth = getPreviousMonth(month)
+    const [m, ml, sh, dep, ut, prevBalsRes] = await Promise.all([
       supabase.from('members').select('*').order('created_at'),
       supabase.from('meals').select('*').gte('date', start).lte('date', end),
       supabase.from('shopping').select('*').gte('date', start).lte('date', end),
       supabase.from('deposits').select('*').gte('date', start).lte('date', end),
       supabase.from('utility').select('*').gte('date', start).lte('date', end),
+      supabase.from('monthly_balances').select('*').eq('month', prevMonth)
     ])
     setMembers(m.data || [])
     setMeals(ml.data || [])
     setShopping(sh.data || [])
     setDeposits(dep.data || [])
     setUtilities(ut.data || [])
+
+    const pBals = prevBalsRes.data ? Object.fromEntries(prevBalsRes.data.map((b:any) => [b.member_id, b.balance])) : {}
+    setPreviousBalances(pBals)
+
     setLoading(false)
     
     // Check if manager
@@ -55,7 +62,7 @@ function MembersPageInner() {
 
   useEffect(() => { load() }, [load])
 
-  const summary = computeSummary(members, meals, shopping, deposits, utilities)
+  const summary = computeSummary(members, meals, shopping, deposits, utilities, [], [], previousBalances)
 
   async function addMember() {
     const n = name.trim()
