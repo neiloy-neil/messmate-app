@@ -25,6 +25,7 @@ function MembersPageInner() {
   
   // Edit State
   const [editPerms, setEditPerms] = useState({ can_add_meals: false, can_add_shopping: false, can_add_deposits: false })
+  const [editEmail, setEditEmail] = useState('')
   
   const [isManager, setIsManager] = useState(true)
 
@@ -80,6 +81,7 @@ function MembersPageInner() {
       can_add_meals: editPerms.can_add_meals,
       can_add_shopping: editPerms.can_add_shopping,
       can_add_deposits: editPerms.can_add_deposits,
+      email: editEmail.trim() || null
     }).eq('id', showEditModal.id)
     setSaving(false)
     if (error) { toast.error('Failed: ' + error.message); return }
@@ -199,6 +201,7 @@ function MembersPageInner() {
                             can_add_shopping: !!s.member.can_add_shopping,
                             can_add_deposits: !!s.member.can_add_deposits,
                           })
+                          setEditEmail(s.member.email || '')
                           setShowEditModal(s.member)
                         }}
                       >
@@ -265,9 +268,19 @@ function MembersPageInner() {
       {showEditModal && (
         <div className="modal-bg" onClick={e => e.target === e.currentTarget && setShowEditModal(null)}>
           <div className="modal">
-            <div className="modal-title">{showEditModal.name}'s Permissions</div>
-            <div className="modal-sub">Toggle what they can do when logged in</div>
+            <div className="modal-title">{showEditModal.name}'s Profile & Permissions</div>
+            <div className="modal-sub">Update their email or toggle what they can do</div>
             
+            <div className="form-group" style={{ marginTop: 16 }}>
+              <label className="form-label">Email Address</label>
+              <input
+                className="form-input" type="email" placeholder="Required if they want to log in"
+                value={editEmail}
+                onChange={e => setEditEmail(e.target.value)}
+              />
+              <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>Assign an email to allow them to log in.</p>
+            </div>
+
             <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                 <input type="checkbox" checked={editPerms.can_add_meals} onChange={e => setEditPerms(p => ({...p, can_add_meals: e.target.checked}))} />
