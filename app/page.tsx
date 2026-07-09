@@ -307,7 +307,7 @@ function DashboardPageInner() {
                       <td className="text-right" style={{ color: s.previousDue > 0 ? 'var(--red)' : '' }}>{s.previousDue > 0 ? fmt(s.previousDue) : '-'}</td>
                       <td className="text-right" style={{ color: isLate ? 'var(--red)' : '', fontWeight: isLate ? 'bold' : 'normal' }}>{s.lateFine > 0 ? fmt(s.lateFine) : '-'}</td>
                       <td className="text-right">{fmt(s.totalDue)}</td>
-                      <td className="text-right">{fmt(s.deposit)}</td>
+                      <td className="text-right">{fmt(s.shopping + s.deposit)}</td>
                       <td className={`text-right font-bold ${bal >= 0 ? 'text-green' : 'text-red'}`}>
                         {bal >= 0 ? '+' : ''}{fmt(bal)}
                       </td>
@@ -325,14 +325,6 @@ function DashboardPageInner() {
         )}
       </div>
 
-      {/* Settlement Preview */}
-      {summary.members.length > 0 && (
-        <div className="card">
-          <div className="card-title mb-4">Settlement Plan</div>
-          <div className="card-sub" style={{ marginBottom: 16 }}>Suggested transactions to settle all balances</div>
-          <SettlementList summaries={summary.members} />
-        </div>
-      )}
     </div>
   )
 }

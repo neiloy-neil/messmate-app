@@ -140,8 +140,8 @@ export function computeSummary(
     d.payableNow = d.utilityShare + d.rent + d.sharedBillShare + d.previousDue + Math.ceil(d.lateFine)
     d.totalDue = d.payableNow + d.unbilledMeals
     
-    // balance = (carried over positive balance) + new regular deposit - totalDue
-    d.balance = d.balance + d.deposit - d.totalDue
+    // balance = (carried over positive balance) + new regular deposit + shopping credit - totalDue
+    d.balance = d.balance + d.deposit + d.shopping - d.totalDue
   })
 
   return {
