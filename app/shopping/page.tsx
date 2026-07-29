@@ -47,10 +47,9 @@ function ShoppingPageInner() {
 
   useEffect(() => {
     load()
-    const channel = supabase.channel('shopping-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping' }, () => load())
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    const onFocus = () => load()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
   }, [load])
 
   async function handleSave(e: React.FormEvent) {
