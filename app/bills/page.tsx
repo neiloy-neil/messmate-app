@@ -23,6 +23,7 @@ function BillsPageInner() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    try {
     const [mRes, sbRes, irRes] = await Promise.all([
       supabase.from('members').select('*').order('created_at'),
       supabase.from('shared_bills').select('*').eq('month', month).maybeSingle(),
@@ -53,7 +54,9 @@ function BillsPageInner() {
     }
     setRents(rentMap)
     
-    setLoading(false)
+    } finally {
+      setLoading(false)
+    }
   }, [month])
 
   useEffect(() => { load() }, [load])

@@ -34,6 +34,7 @@ function DashboardPageInner() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    try {
     const start = `${month}-01`, end = `${month}-${getDaysInMonth(month)}`
     const prevMonth = getPreviousMonth(month)
 
@@ -96,7 +97,9 @@ function DashboardPageInner() {
       }
     }
     
-    setLoading(false)
+    } finally {
+      setLoading(false)
+    }
   }, [month])
 
   useEffect(() => { load() }, [load])

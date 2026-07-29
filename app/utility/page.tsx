@@ -18,15 +18,18 @@ function UtilityPageInner() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [mRes, uRes] = await Promise.all([
-      supabase.from('members').select('*').order('created_at'),
-      supabase.from('utility').select('*').gte('date', `${month}-01`).lte('date', `${month}-${getDaysInMonth(month)}`).order('created_at'),
-    ])
-    const mems = mRes.data || []
-    setMembers(mems)
-    setUtilities(uRes.data || [])
-    if (mems.length > 0) setForm(f => ({ ...f, memberId: f.memberId || mems[0].id }))
-    setLoading(false)
+    try {
+      const [mRes, uRes] = await Promise.all([
+        supabase.from('members').select('*').order('created_at'),
+        supabase.from('utility').select('*').gte('date', `${month}-01`).lte('date', `${month}-${getDaysInMonth(month)}`).order('created_at'),
+      ])
+      const mems = mRes.data || []
+      setMembers(mems)
+      setUtilities(uRes.data || [])
+      if (mems.length > 0) setForm(f => ({ ...f, memberId: f.memberId || mems[0].id }))
+    } finally {
+      setLoading(false)
+    }
   }, [month])
 
   useEffect(() => { load() }, [load])

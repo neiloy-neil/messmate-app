@@ -32,31 +32,30 @@ function MembersPageInner() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const start = `${month}-01`, end = `${month}-${getDaysInMonth(month)}`
-    const prevMonth = getPreviousMonth(month)
-    const [m, ml, sh, dep, ut, prevBalsRes] = await Promise.all([
-      supabase.from('members').select('*').order('created_at'),
-      supabase.from('meals').select('*').gte('date', start).lte('date', end),
-      supabase.from('shopping').select('*').gte('date', start).lte('date', end),
-      supabase.from('deposits').select('*').gte('date', start).lte('date', end),
-      supabase.from('utility').select('*').gte('date', start).lte('date', end),
-      supabase.from('monthly_balances').select('*').eq('month', prevMonth)
-    ])
-    setMembers(m.data || [])
-    setMeals(ml.data || [])
-    setShopping(sh.data || [])
-    setDeposits(dep.data || [])
-    setUtilities(ut.data || [])
-
-    const pBals = prevBalsRes.data ? Object.fromEntries(prevBalsRes.data.map((b:any) => [b.member_id, b.balance])) : {}
-    setPreviousBalances(pBals)
-
-    setLoading(false)
-    
-    // Check if manager
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user && m.data) {
-       setIsManager(m.data.length === 0 || m.data[0].user_id === user.id)
+    try {
+      const start = `${month}-01`, end = `${month}-${getDaysInMonth(month)}`
+      const prevMonth = getPreviousMonth(month)
+      const [m, ml, sh, dep, ut, prevBalsRes] = await Promise.all([
+        supabase.from('members').select('*').order('created_at'),
+        supabase.from('meals').select('*').gte('date', start).lte('date', end),
+        supabase.from('shopping').select('*').gte('date', start).lte('date', end),
+        supabase.from('deposits').select('*').gte('date', start).lte('date', end),
+        supabase.from('utility').select('*').gte('date', start).lte('date', end),
+        supabase.from('monthly_balances').select('*').eq('month', prevMonth)
+      ])
+      setMembers(m.data || [])
+      setMeals(ml.data || [])
+      setShopping(sh.data || [])
+      setDeposits(dep.data || [])
+      setUtilities(ut.data || [])
+      const pBals = prevBalsRes.data ? Object.fromEntries(prevBalsRes.data.map((b:any) => [b.member_id, b.balance])) : {}
+      setPreviousBalances(pBals)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user && m.data) {
+        setIsManager(m.data.length === 0 || m.data[0].user_id === user.id)
+      }
+    } finally {
+      setLoading(false)
     }
   }, [month])
 

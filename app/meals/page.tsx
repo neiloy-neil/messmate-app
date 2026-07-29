@@ -20,6 +20,7 @@ function MealsPageInner() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    try {
     const [mRes, dataRes] = await Promise.all([
       supabase.from('members').select('*').order('created_at'),
       supabase.from('meals').select('*').gte('date', `${month}-01`).lte('date', `${month}-${getDaysInMonth(month)}`),
@@ -39,7 +40,9 @@ function MealsPageInner() {
     }
     setMembers(mems)
     setRows(grid)
-    setLoading(false)
+    } finally {
+      setLoading(false)
+    }
   }, [month])
 
   useEffect(() => { load() }, [load])

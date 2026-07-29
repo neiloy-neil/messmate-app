@@ -24,6 +24,7 @@ function ShoppingPageInner() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    try {
     const start = `${month}-01`, end = `${month}-${getDaysInMonth(month)}`
     const [mRes, dataRes] = await Promise.all([
       supabase.from('members').select('*').order('created_at'),
@@ -42,7 +43,9 @@ function ShoppingPageInner() {
       setFormDate(`${month}-01`)
     }
     
-    setLoading(false)
+    } finally {
+      setLoading(false)
+    }
   }, [month])
 
   useEffect(() => { load() }, [load])
