@@ -15,6 +15,7 @@ function MealsPageInner() {
   const [members, setMembers] = useState<Member[]>([])
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
+  const [managerUserId, setManagerUserId] = useState('')
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const load = useCallback(async () => {
@@ -25,6 +26,7 @@ function MealsPageInner() {
     ])
     const allMems: Member[] = mRes.data || []
     const mems = allMems.filter(m => !m.hidden_months?.includes(month))
+    setManagerUserId(allMems[0]?.user_id || '')
     const data = dataRes.data || []
     const days = getDaysInMonth(month)
     const grid: Row[] = []
@@ -52,7 +54,7 @@ function MealsPageInner() {
     if (count === 0) {
       await supabase.from('meals').delete().eq('member_id', memberId).eq('date', date)
     } else {
-      await supabase.from('meals').upsert({ member_id: memberId, date, count }, { onConflict: 'member_id,date' })
+      await supabase.from('meals').upsert({ user_id: managerUserId || undefined, member_id: memberId, date, count }, { onConflict: 'member_id,date' })
     }
   }
 

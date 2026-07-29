@@ -55,7 +55,7 @@ function ShoppingPageInner() {
     if (!user) return
 
     const { error } = await supabase.from('shopping').insert({
-      user_id: user.id,
+      user_id: members[0]?.user_id || user.id,
       member_id: formMember,
       date: formDate,
       description: formDesc,
