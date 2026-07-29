@@ -99,7 +99,16 @@ function DashboardPageInner() {
     setLoading(false)
   }, [month])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+    const channel = supabase.channel('dashboard-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'meals' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shopping' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deposits' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'utility' }, () => load())
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [load])
 
   const summary = computeSummary(members, meals, shopping, deposits, utilities, rents, shared, previousBalances)
 
