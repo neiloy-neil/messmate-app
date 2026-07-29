@@ -99,12 +99,7 @@ function DashboardPageInner() {
     setLoading(false)
   }, [month])
 
-  useEffect(() => {
-    load()
-    const onVisible = () => { if (document.visibilityState === 'visible') load() }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [load])
+  useEffect(() => { load() }, [load])
 
   const summary = computeSummary(members, meals, shopping, deposits, utilities, rents, shared, previousBalances)
 

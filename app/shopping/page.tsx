@@ -45,12 +45,7 @@ function ShoppingPageInner() {
     setLoading(false)
   }, [month])
 
-  useEffect(() => {
-    load()
-    const onVisible = () => { if (document.visibilityState === 'visible') load() }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [load])
+  useEffect(() => { load() }, [load])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
