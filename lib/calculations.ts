@@ -94,7 +94,8 @@ export function computeSummary(
   const totalMeals = Object.values(memberMap).reduce((s, d) => s + d.meals, 0)
   const totalShopping = Object.values(memberMap).reduce((s, d) => s + d.shopping, 0)
   const totalDeposit = Object.values(memberMap).reduce((s, d) => s + d.deposit, 0)
-  const totalUtility = utilities.reduce((s, u) => s + Number(u.amount), 0)
+  // Exclude __fine_adj__ entries from utility totals
+  const totalUtility = utilities.filter(u => u.description !== '__fine_adj__').reduce((s, u) => s + Number(u.amount), 0)
   const totalRent = individualRents.reduce((s, r) => s + Number(r.amount), 0)
   
   const sb = sharedBills.length > 0 ? sharedBills[0] : null

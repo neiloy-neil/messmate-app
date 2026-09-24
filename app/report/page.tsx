@@ -32,12 +32,7 @@ function ReportPageInner() {
     const start = `${month}-01`, end = `${month}-${getDaysInMonth(month)}`
     const prevMonth = getPreviousMonth(month)
 
-    const [
-      m, ml, sh, dep, ut, ir, sb,
-      prevBalsRes,
-      currBalsRes,
-      fineAdj
-    ] = await Promise.all([
+    const [m, ml, sh, dep, ut, ir, sb, prevBalsRes, currBalsRes] = await Promise.all([
       supabase.from('members').select('*').order('created_at'),
       supabase.from('meals').select('*').gte('date', start).lte('date', end),
       supabase.from('shopping').select('*').gte('date', start).lte('date', end),
@@ -47,7 +42,6 @@ function ReportPageInner() {
       supabase.from('shared_bills').select('*').eq('month', month),
       supabase.from('monthly_balances').select('*').eq('month', prevMonth),
       supabase.from('monthly_balances').select('*').eq('month', month),
-      supabase.from('fine_adjustments').select('*').eq('month', month),
     ])
 
     const membersList = m.data || []
@@ -64,15 +58,17 @@ function ReportPageInner() {
     setMeals(ml.data || [])
     setShopping(sh.data || [])
     setDeposits(dep.data || [])
-    setUtilities(ut.data || [])
+    const allUtility = ut.data || []
+    setUtilities(allUtility)
     setRents(ir.data || [])
     setShared(sb.data || [])
     setIsLocked(Boolean(currBalsRes.data && currBalsRes.data.length > 0))
 
+    // Build fine adjustments map from utility entries tagged __fine_adj__
     const adjMap: Record<string, number> = {}
-    if (fineAdj.data) {
-      fineAdj.data.forEach((a: any) => { adjMap[a.member_id] = Number(a.adjustment) })
-    }
+    allUtility.filter((u: any) => u.description === '__fine_adj__').forEach((u: any) => {
+      adjMap[u.member_id] = Number(u.amount)
+    })
     setFineAdjustments(adjMap)
 
     const { data: { user } } = await supabase.auth.getUser()
@@ -90,16 +86,29 @@ function ReportPageInner() {
   const summary = computeSummary(members, meals, shopping, deposits, utilities, rents, shared, previousBalances, new Date().getDate(), fineAdjustments)
 
   async function saveFineAdjustment(memberId: string, newFine: number, autoFine: number) {
-    const adjustment = newFine - autoFine // could be negative (reduction) or positive (increase)
+    const adjustment = newFine - autoFine
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const { error } = await supabase.from('fine_adjustments').upsert({
-      user_id: user.id,
-      member_id: memberId,
-      month,
-      adjustment,
-    }, { onConflict: 'member_id,month' })
+    // Delete existing __fine_adj__ entry for this member/month, then insert new one
+    await supabase.from('utility')
+      .delete()
+      .eq('member_id', memberId)
+      .eq('description', '__fine_adj__')
+      .gte('date', `${month}-01`)
+      .lte('date', `${month}-31`)
+
+    let error = null
+    if (adjustment !== 0) {
+      const res = await supabase.from('utility').insert({
+        user_id: user.id,
+        member_id: memberId,
+        description: '__fine_adj__',
+        amount: adjustment,
+        date: `${month}-01`,
+      })
+      error = res.error
+    }
 
     if (error) {
       toast.error('Failed to save: ' + error.message)

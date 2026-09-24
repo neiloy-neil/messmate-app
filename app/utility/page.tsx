@@ -25,7 +25,7 @@ function UtilityPageInner() {
       ])
       const mems = mRes.data || []
       setMembers(mems)
-      setUtilities(uRes.data || [])
+      setUtilities((uRes.data || []).filter((u: Utility) => u.description !== '__fine_adj__'))
       if (mems.length > 0) setForm(f => ({ ...f, memberId: f.memberId || mems[0].id }))
     } finally {
       setLoading(false)
