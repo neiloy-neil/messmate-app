@@ -11,6 +11,7 @@ export interface MemberSummary {
   mealCost: number
   previousDue: number
   lateFine: number
+  lateFineAdjustment: number
   totalDue: number
   balance: number
   payableNow: number
@@ -41,7 +42,8 @@ export function computeSummary(
   individualRents: IndividualRent[] = [],
   sharedBills: SharedBills[] = [],
   previousBalances: Record<string, number> = {},
-  currentDayForFine: number = new Date().getDate()
+  currentDayForFine: number = new Date().getDate(),
+  fineAdjustments: Record<string, number> = {}
 ): MonthSummary {
   const memberMap: Record<string, MemberSummary> = {}
 
@@ -61,6 +63,7 @@ export function computeSummary(
       mealCost: 0,
       previousDue,
       lateFine: 0,
+      lateFineAdjustment: 0,
       totalDue: 0,
       balance: prevBal > 0 ? prevBal : 0, // carry forward positive balance
       payableNow: 0,
@@ -122,9 +125,14 @@ export function computeSummary(
       const daysLate = Math.max(0, paymentDay - 11) // 12th = 1 day = 2 meals fine
       if (daysLate > 0) {
         d.lateFine = daysLate * (2 * mealRate)
-        totalLateFines += d.lateFine
       }
     }
+
+    // Apply admin fine adjustment (override/reduce/waive)
+    const adj = fineAdjustments[d.member.id] || 0
+    d.lateFineAdjustment = adj
+    d.lateFine = Math.max(0, d.lateFine + adj)
+    totalLateFines += d.lateFine
 
     d.utilityShare = Math.ceil(utilityShare)
     d.sharedBillShare = Math.ceil(sharedBillShare)

@@ -81,3 +81,13 @@ export interface MonthlyBalance {
   balance: number
   created_at: string
 }
+
+export interface FineAdjustment {
+  id: string
+  user_id: string
+  member_id: string
+  month: string
+  adjustment: number
+  note?: string
+  created_at: string
+}

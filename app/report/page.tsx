@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation'
 import { supabase, Member, Meal, Shopping, Deposit, Utility } from '@/lib/supabase'
 import { computeSummary, monthLabel, currentYM, fmt, getDaysInMonth, getPreviousMonth } from '@/lib/calculations'
 import { MemberAvatar } from '@/components/MemberAvatar'
-import { SettlementList } from '@/components/SettlementList'
 import { toast } from '@/components/ToastProvider'
 
 function ReportPageInner() {
@@ -19,20 +18,25 @@ function ReportPageInner() {
   const [rents, setRents] = useState<any[]>([])
   const [shared, setShared] = useState<any[]>([])
   const [previousBalances, setPreviousBalances] = useState<Record<string, number>>({})
+  const [fineAdjustments, setFineAdjustments] = useState<Record<string, number>>({})
   const [isLocked, setIsLocked] = useState(false)
+  const [isManager, setIsManager] = useState(false)
   const [loading, setLoading] = useState(true)
   const [locking, setLocking] = useState(false)
+
+  // Inline late-fine editing
+  const [editingFine, setEditingFine] = useState<{ memberId: string; value: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     const start = `${month}-01`, end = `${month}-${getDaysInMonth(month)}`
     const prevMonth = getPreviousMonth(month)
-    const pStart = `${prevMonth}-01`, pEnd = `${prevMonth}-${getDaysInMonth(prevMonth)}`
 
     const [
       m, ml, sh, dep, ut, ir, sb,
       prevBalsRes,
-      currBalsRes
+      currBalsRes,
+      fineAdj
     ] = await Promise.all([
       supabase.from('members').select('*').order('created_at'),
       supabase.from('meals').select('*').gte('date', start).lte('date', end),
@@ -41,45 +45,70 @@ function ReportPageInner() {
       supabase.from('utility').select('*').gte('date', start).lte('date', end),
       supabase.from('individual_rent').select('*').eq('month', month),
       supabase.from('shared_bills').select('*').eq('month', month),
-      // Fetch previous month's locked balances
       supabase.from('monthly_balances').select('*').eq('month', prevMonth),
-      // Fetch current month's locked balances to see if already locked
-      supabase.from('monthly_balances').select('*').eq('month', month)
+      supabase.from('monthly_balances').select('*').eq('month', month),
+      supabase.from('fine_adjustments').select('*').eq('month', month),
     ])
-    
+
     const membersList = m.data || []
-    setMembers(membersList)
+
+    const pBals = prevBalsRes.data ? Object.fromEntries(prevBalsRes.data.map((b: any) => [b.member_id, b.balance])) : {}
+    setPreviousBalances(pBals)
+
+    const visibleMembers = membersList.filter(m => {
+      const isHidden = m.hidden_months?.includes(month)
+      if (!isHidden) return true
+      return (pBals[m.id] || 0) < 0
+    })
+    setMembers(visibleMembers)
     setMeals(ml.data || [])
     setShopping(sh.data || [])
     setDeposits(dep.data || [])
     setUtilities(ut.data || [])
     setRents(ir.data || [])
     setShared(sb.data || [])
+    setIsLocked(Boolean(currBalsRes.data && currBalsRes.data.length > 0))
 
-    // Map previous locked balances
-    const pBals = prevBalsRes.data ? Object.fromEntries(prevBalsRes.data.map((b:any) => [b.member_id, b.balance])) : {}
-    setPreviousBalances(pBals)
+    const adjMap: Record<string, number> = {}
+    if (fineAdj.data) {
+      fineAdj.data.forEach((a: any) => { adjMap[a.member_id] = Number(a.adjustment) })
+    }
+    setFineAdjustments(adjMap)
 
-    // Filter active members for this month
-    const visibleMembers = membersList.filter(m => {
-      const isHidden = m.hidden_months?.includes(month)
-      if (!isHidden) return true
-      const prevBal = pBals[m.id] || 0
-      return prevBal < 0 // Show them if they owe money from previous months
-    })
-    setMembers(visibleMembers)
-    
-    // Check if this month is already locked
-    const isLocked = Boolean(currBalsRes.data && currBalsRes.data.length > 0)
-    // We will need to set this in state
-    setIsLocked(isLocked)
-    
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user && membersList.length > 0) {
+      setIsManager(membersList.some(m => m.auth_id === user.id && m.is_admin) || membersList[0].user_id === user.id)
+    } else if (user) {
+      setIsManager(true)
+    }
+
     setLoading(false)
   }, [month])
 
   useEffect(() => { load() }, [load])
 
-  const summary = computeSummary(members, meals, shopping, deposits, utilities, rents, shared, previousBalances)
+  const summary = computeSummary(members, meals, shopping, deposits, utilities, rents, shared, previousBalances, new Date().getDate(), fineAdjustments)
+
+  async function saveFineAdjustment(memberId: string, newFine: number, autoFine: number) {
+    const adjustment = newFine - autoFine // could be negative (reduction) or positive (increase)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { error } = await supabase.from('fine_adjustments').upsert({
+      user_id: user.id,
+      member_id: memberId,
+      month,
+      adjustment,
+    }, { onConflict: 'member_id,month' })
+
+    if (error) {
+      toast.error('Failed to save: ' + error.message)
+    } else {
+      setFineAdjustments(prev => ({ ...prev, [memberId]: adjustment }))
+      toast.success('Late fine updated')
+    }
+    setEditingFine(null)
+  }
 
   async function exportExcel() {
     const { default: XLSX } = await import('xlsx')
@@ -87,15 +116,15 @@ function ReportPageInner() {
       ['MessMate — Final Report'],
       [`Month: ${monthLabel(month)}`],
       [],
-      ['Name', 'Meals', 'Meal Rate (৳)', 'Meal Cost (৳)', 'Misc Utility (৳)', 'Rent (৳)', 'Shared Bills (৳)', 'Prev Due (৳)', 'Late Fine (৳)', 'Total Due (৳)', 'Deposit (৳)', 'Balance (৳)'],
-      ...summary.members.map(s => [s.member.name, s.meals, +summary.mealRate.toFixed(2), s.mealCost, s.utilityShare, s.rent, s.sharedBillShare, s.previousDue, s.lateFine, s.totalDue, s.deposit, s.balance]),
+      ['Name', 'Meals', 'Meal Rate (৳)', 'Meal Cost (৳)', 'Utility (৳)', 'Rent (৳)', 'Shared Bills (৳)', 'Prev Due (৳)', 'Late Fine (৳)', 'Total Due (৳)', 'Shopping (৳)', 'Deposit (৳)', 'Balance (৳)'],
+      ...summary.members.map(s => [s.member.name, s.meals, +summary.mealRate.toFixed(2), s.mealCost, s.utilityShare, s.rent, s.sharedBillShare, s.previousDue, s.lateFine, s.totalDue, s.shopping, s.deposit, s.balance]),
       [],
       ['Summary'],
       ['Total Meals', summary.totalMeals],
       ['Total Shopping', summary.totalShopping],
       ['Meal Rate', +summary.mealRate.toFixed(2)],
       ['Total Deposit', summary.totalDeposit],
-      ['Total Misc Utility', summary.totalUtility],
+      ['Total Utility', summary.totalUtility],
       ['Total Rent', summary.totalRent],
       ['Total Shared Bills', summary.totalSharedBills],
       ['Total Late Fines', summary.totalLateFines],
@@ -108,46 +137,34 @@ function ReportPageInner() {
   }
 
   async function lockMonth() {
-    if (!confirm(`Are you sure you want to lock the month of ${monthLabel(month)}? This will permanently save everyone's final carry-over balances.`)) return
-    
+    if (!confirm(`Are you sure you want to lock ${monthLabel(month)}? This will permanently save everyone's final carry-over balances.`)) return
     setLocking(true)
     const toInsert = summary.members.map(s => ({
       member_id: s.member.id,
-      month: month,
-      balance: s.balance // Balance already factors in the Unbilled Meals via Total Due.
+      month,
+      balance: s.balance
     }))
-    
     const { error } = await supabase.from('monthly_balances').upsert(toInsert, { onConflict: 'member_id,month' })
     setLocking(false)
-    
-    if (error) {
-      toast.error('Failed to lock month: ' + error.message)
-    } else {
-      toast.success('Month Locked! Balances saved.')
-      setIsLocked(true)
-    }
+    if (error) toast.error('Failed to lock: ' + error.message)
+    else { toast.success('Month Locked! Balances saved.'); setIsLocked(true) }
   }
 
   async function unlockMonth() {
-    if (!confirm(`Are you sure you want to unlock the month of ${monthLabel(month)}? This will remove the saved carry-over balances for next month.`)) return
-    
+    if (!confirm(`Unlock ${monthLabel(month)}? This removes the saved carry-over balances.`)) return
     setLocking(true)
     const { error } = await supabase.from('monthly_balances').delete().eq('month', month)
     setLocking(false)
-    
-    if (error) {
-      toast.error('Failed to unlock month: ' + error.message)
-    } else {
-      toast.success('Month Unlocked!')
-      setIsLocked(false)
-    }
+    if (error) toast.error('Failed to unlock: ' + error.message)
+    else { toast.success('Month Unlocked!'); setIsLocked(false) }
   }
 
   if (loading) return <div className="page"><div className="spinner" /></div>
 
   const { totalMeals, totalShopping, totalDeposit, totalUtility, totalRent, totalSharedBills, mealRate, members: summaries } = summary
   const totalDue = summaries.reduce((s, x) => s + x.totalDue, 0)
-  const netBalance = totalDeposit - totalDue
+  const totalContributions = summaries.reduce((s, x) => s + x.shopping + x.deposit, 0)
+  const netBalance = totalContributions - totalDue
 
   return (
     <div className="page">
@@ -166,7 +183,7 @@ function ReportPageInner() {
               {locking ? 'Locking...' : '🔒 Lock Month'}
             </button>
           ) : (
-            <button className="btn btn-secondary" style={{ width: '100%', borderColor: 'var(--border)' }} onClick={unlockMonth} disabled={locking}>
+            <button className="btn btn-secondary" style={{ width: '100%' }} onClick={unlockMonth} disabled={locking}>
               {locking ? 'Unlocking...' : '🔓 Unlock Month'}
             </button>
           )}
@@ -193,7 +210,7 @@ function ReportPageInner() {
         <div className="stat-card green">
           <div className="stat-hd"><div className="stat-label">Total Deposit</div><div className="stat-icon green">💰</div></div>
           <div className="stat-val">{fmt(totalDeposit)}</div>
-          <div className="stat-sub">Collected</div>
+          <div className="stat-sub">Cash collected</div>
         </div>
         <div className="stat-card blue">
           <div className="stat-hd"><div className="stat-label">Fixed Bills</div><div className="stat-icon blue">🧾</div></div>
@@ -202,13 +219,16 @@ function ReportPageInner() {
         </div>
       </div>
 
-      {/* Report Table */}
+      {/* Member Breakdown Table */}
       <div className="card" style={{ padding: 0, marginBottom: 20 }}>
         <div style={{ padding: '18px 22px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
           <div>
             <div className="card-title">Member Breakdown</div>
             <div className="card-sub">Meal cost, utility share, deposit and balance per member</div>
           </div>
+          {isManager && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Click a late fine to edit</div>
+          )}
         </div>
         <div className="table-wrap">
           {members.length === 0 ? (
@@ -222,11 +242,12 @@ function ReportPageInner() {
                   <th className="text-right">Meal Rate</th>
                   <th className="text-right">Rent</th>
                   <th className="text-right">Shared Bills</th>
-                  <th className="text-right">Misc Util</th>
+                  <th className="text-right">Utility Exp.</th>
                   <th className="text-right">Prev Due</th>
                   <th className="text-right">Late Fine</th>
                   <th className="text-right font-bold text-red">Payable Now</th>
                   <th className="text-right">Unbilled Meals</th>
+                  <th className="text-right">Shopping</th>
                   <th className="text-right">Deposit</th>
                   <th className="text-right">Balance</th>
                 </tr>
@@ -234,6 +255,8 @@ function ReportPageInner() {
               <tbody>
                 {summaries.map((s, i) => {
                   const bal = s.balance
+                  const autoFine = s.lateFine - s.lateFineAdjustment
+                  const isEditing = editingFine?.memberId === s.member.id
                   return (
                     <tr key={s.member.id}>
                       <td><div className="member-row"><MemberAvatar name={s.member.name} index={i} /><span className="member-name">{s.member.name}</span></div></td>
@@ -243,9 +266,33 @@ function ReportPageInner() {
                       <td className="text-right">{fmt(s.sharedBillShare)}</td>
                       <td className="text-right">{fmt(s.utilityShare)}</td>
                       <td className="text-right" style={{ color: s.previousDue > 0 ? 'var(--red)' : '' }}>{s.previousDue > 0 ? fmt(s.previousDue) : '-'}</td>
-                      <td className="text-right" style={{ color: s.lateFine > 0 ? 'var(--red)' : '', fontWeight: s.lateFine > 0 ? 'bold' : 'normal' }}>{s.lateFine > 0 ? fmt(s.lateFine) : '-'}</td>
+                      <td className="text-right" style={{ color: s.lateFine > 0 ? 'var(--red)' : '', fontWeight: s.lateFine > 0 ? 'bold' : 'normal' }}>
+                        {isManager && isEditing ? (
+                          <input
+                            type="number"
+                            defaultValue={s.lateFine}
+                            autoFocus
+                            style={{ width: 80, padding: '2px 4px', background: 'var(--bg-main)', border: '1px solid var(--accent)', borderRadius: 4, color: 'var(--text-main)', fontSize: 13, textAlign: 'right' }}
+                            onBlur={e => saveFineAdjustment(s.member.id, Number(e.target.value), autoFine)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') saveFineAdjustment(s.member.id, Number((e.target as HTMLInputElement).value), autoFine)
+                              if (e.key === 'Escape') setEditingFine(null)
+                            }}
+                          />
+                        ) : (
+                          <span
+                            onClick={() => isManager && setEditingFine({ memberId: s.member.id, value: String(s.lateFine) })}
+                            style={{ cursor: isManager ? 'pointer' : 'default', textDecoration: isManager && s.lateFine > 0 ? 'underline dotted' : 'none' }}
+                            title={isManager ? 'Click to override fine' : undefined}
+                          >
+                            {s.lateFine > 0 ? fmt(s.lateFine) : '-'}
+                            {s.lateFineAdjustment !== 0 && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 3 }}>✏️</span>}
+                          </span>
+                        )}
+                      </td>
                       <td className="text-right font-bold text-red" style={{ fontSize: 14 }}>{fmt(s.payableNow)}</td>
                       <td className="text-right text-muted">{fmt(s.unbilledMeals)}</td>
+                      <td className="text-right" style={{ color: s.shopping > 0 ? 'var(--green)' : '' }}>{s.shopping > 0 ? fmt(s.shopping) : '-'}</td>
                       <td className="text-right">{fmt(s.deposit)}</td>
                       <td className={`text-right font-bold ${bal >= 0 ? 'text-green' : 'text-red'}`} style={{ fontSize: 15 }}>
                         {bal >= 0 ? '+' : ''}{fmt(bal)}
@@ -266,6 +313,7 @@ function ReportPageInner() {
                   <td className="text-right">{fmt(summary.totalLateFines)}</td>
                   <td className="text-right font-bold text-red">{fmt(summary.totalPayableNow)}</td>
                   <td className="text-right text-muted">{fmt(summary.totalUnbilledMeals)}</td>
+                  <td className="text-right">{fmt(totalShopping)}</td>
                   <td className="text-right">{fmt(totalDeposit)}</td>
                   <td className={`text-right font-bold ${netBalance >= 0 ? 'text-green' : 'text-red'}`} style={{ fontSize: 15 }}>
                     {netBalance >= 0 ? '+' : ''}{fmt(netBalance)}
@@ -275,13 +323,6 @@ function ReportPageInner() {
             </table>
           )}
         </div>
-      </div>
-
-      {/* Settlement */}
-      <div className="card">
-        <div className="card-title mb-4">Settlement Plan</div>
-        <div className="card-sub" style={{ marginBottom: 16 }}>Suggested transactions to settle all balances</div>
-        <SettlementList summaries={summaries} />
       </div>
     </div>
   )
