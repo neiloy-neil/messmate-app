@@ -76,21 +76,7 @@ function BillsPageInner() {
       maid: Number(shared.maid) || 0,
     }
 
-    // Check if it exists first
-    const { data: existing } = await supabase
-      .from('shared_bills')
-      .select('id')
-      .eq('month', month)
-      .maybeSingle()
-
-    let error
-    if (existing) {
-      const res = await supabase.from('shared_bills').update(payload).eq('id', existing.id)
-      error = res.error
-    } else {
-      const res = await supabase.from('shared_bills').insert(payload)
-      error = res.error
-    }
+    const { error } = await supabase.from('shared_bills').upsert(payload, { onConflict: 'month' })
 
     if (error) toast.error('Failed to save bills: ' + error.message)
     else toast.success('Shared bills saved!')
@@ -101,26 +87,12 @@ function BillsPageInner() {
     if (!user) return
 
     const amount = Number(rents[memberId]) || 0
-    // Check if exists
-    const { data: existing } = await supabase
-      .from('individual_rent')
-      .select('id')
-      .eq('member_id', memberId)
-      .eq('month', month)
-      .maybeSingle()
+    const { error } = await supabase.from('individual_rent').upsert(
+      { user_id: user.id, member_id: memberId, month, amount },
+      { onConflict: 'member_id,month' }
+    )
 
-    let error
-    const payload = { user_id: user.id, member_id: memberId, month, amount }
-    
-    if (existing) {
-      const res = await supabase.from('individual_rent').update(payload).eq('id', existing.id)
-      error = res.error
-    } else {
-      const res = await supabase.from('individual_rent').insert(payload)
-      error = res.error
-    }
-
-    if (error) toast.error('Failed to save rent')
+    if (error) toast.error('Failed to save rent: ' + error.message)
     else toast.success('Rent updated!')
   }
 
