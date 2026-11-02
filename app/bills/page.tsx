@@ -76,7 +76,7 @@ function BillsPageInner() {
       maid: Number(shared.maid) || 0,
     }
 
-    const { error } = await supabase.from('shared_bills').upsert(payload, { onConflict: 'month' })
+    const { error } = await supabase.from('shared_bills').upsert(payload, { onConflict: 'user_id,month' })
 
     if (error) toast.error('Failed to save bills: ' + error.message)
     else toast.success('Shared bills saved!')
