@@ -1,15 +1,24 @@
 'use client'
 import { Suspense } from 'react'
 import { useEffect, useState, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase, Member, Utility } from '@/lib/supabase'
 import { monthLabel, currentYM, fmt, getDaysInMonth } from '@/lib/calculations'
 import { MemberAvatar } from '@/components/MemberAvatar'
 import { toast } from '@/components/ToastProvider'
+import { useUserRole } from '@/lib/useUserRole'
 
 function UtilityPageInner() {
   const sp = useSearchParams()
+  const router = useRouter()
+  const { isGuest, loading: roleLoading } = useUserRole()
   const month = sp.get('month') || currentYM()
+
+  useEffect(() => {
+    if (!roleLoading && isGuest) {
+      router.replace('/')
+    }
+  }, [roleLoading, isGuest, router])
   const [members, setMembers] = useState<Member[]>([])
   const [utilities, setUtilities] = useState<Utility[]>([])
   const [loading, setLoading] = useState(true)
@@ -59,7 +68,7 @@ function UtilityPageInner() {
     load()
   }
 
-  if (loading) return <div className="page"><div className="spinner" /></div>
+  if (loading || roleLoading || isGuest) return <div className="page"><div className="spinner" /></div>
 
   const total = utilities.reduce((s, u) => s + Number(u.amount), 0)
   const perPerson = members.length > 0 ? total / members.length : 0

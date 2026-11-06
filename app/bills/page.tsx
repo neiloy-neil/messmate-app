@@ -1,15 +1,24 @@
 'use client'
 
 import { Suspense, useEffect, useState, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase, Member, IndividualRent, SharedBills } from '@/lib/supabase'
 import { monthLabel, currentYM, fmt } from '@/lib/calculations'
 import { MemberAvatar } from '@/components/MemberAvatar'
 import { toast } from '@/components/ToastProvider'
+import { useUserRole } from '@/lib/useUserRole'
 
 function BillsPageInner() {
   const sp = useSearchParams()
+  const router = useRouter()
+  const { isGuest, loading: roleLoading } = useUserRole()
   const month = sp.get('month') || currentYM()
+
+  useEffect(() => {
+    if (!roleLoading && isGuest) {
+      router.replace('/')
+    }
+  }, [roleLoading, isGuest, router])
   const [loading, setLoading] = useState(true)
   const [members, setMembers] = useState<Member[]>([])
   
@@ -96,7 +105,7 @@ function BillsPageInner() {
     else toast.success('Rent updated!')
   }
 
-  if (loading) return <div className="page"><div className="spinner" /></div>
+  if (loading || roleLoading || isGuest) return <div className="page"><div className="spinner" /></div>
 
   const totalShared = 
     (Number(shared.gas)||0) + 

@@ -6,10 +6,12 @@ import { supabase, Member, Shopping } from '@/lib/supabase'
 import { getDaysInMonth, monthLabel, currentYM, fmt } from '@/lib/calculations'
 import { MemberAvatar } from '@/components/MemberAvatar'
 import { toast } from '@/components/ToastProvider'
+import { useUserRole } from '@/lib/useUserRole'
 
 function ShoppingPageInner() {
   const sp = useSearchParams()
   const month = sp.get('month') || currentYM()
+  const { isGuest } = useUserRole()
   
   const [members, setMembers] = useState<Member[]>([])
   const [shopping, setShopping] = useState<Shopping[]>([])
@@ -102,6 +104,8 @@ function ShoppingPageInner() {
   if (loading) return <div className="page"><div className="spinner" /></div>
 
   const totalExpense = shopping.reduce((sum, s) => sum + Number(s.amount), 0)
+  const displayShopping = isGuest ? shopping.filter(s => members.some(m => m.id === s.member_id && m.is_meal_only)) : shopping
+  const guestTotalShopping = displayShopping.reduce((sum, s) => sum + Number(s.amount), 0)
 
   return (
     <div className="page">
@@ -125,7 +129,7 @@ function ShoppingPageInner() {
                 <label className="form-label">Member</label>
                 <select className="form-input" value={formMember} onChange={e => setFormMember(e.target.value)} required>
                   <option value="">Select Member...</option>
-                  {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  {members.filter(m => isGuest ? m.is_meal_only : true).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
               </div>
               <div className="form-group">
@@ -153,21 +157,21 @@ function ShoppingPageInner() {
         <div className="stat-card orange">
           <div className="stat-hd"><div className="stat-label">Total Expense</div><div className="stat-icon orange">🛒</div></div>
           <div className="stat-val">{fmt(totalExpense)}</div>
-          <div className="stat-sub">Spent this month</div>
+          <div className="stat-sub">{isGuest ? 'Mess total shopping' : 'Spent this month'}</div>
         </div>
         <div className="stat-card purple">
-          <div className="stat-hd"><div className="stat-label">Transactions</div><div className="stat-icon purple">🧾</div></div>
-          <div className="stat-val">{shopping.length}</div>
-          <div className="stat-sub">Purchases logged</div>
+          <div className="stat-hd"><div className="stat-label">{isGuest ? 'Your Shopping' : 'Transactions'}</div><div className="stat-icon purple">🧾</div></div>
+          <div className="stat-val">{isGuest ? fmt(guestTotalShopping) : shopping.length}</div>
+          <div className="stat-sub">{isGuest ? `${displayShopping.length} purchases logged` : 'Purchases logged'}</div>
         </div>
       </div>
 
       <div className="card" style={{ padding: 0 }}>
         <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid var(--border)' }}>
-          <div className="card-title">Shopping Ledger</div>
+          <div className="card-title">{isGuest ? 'Your Shopping Expenses' : 'Shopping Ledger'}</div>
         </div>
         
-        {shopping.length === 0 ? (
+        {displayShopping.length === 0 ? (
           <div className="empty">
             <div className="icon">🛒</div>
             <h3>No expenses yet</h3>
@@ -186,7 +190,7 @@ function ShoppingPageInner() {
                 </tr>
               </thead>
               <tbody>
-                {shopping.map((s) => {
+                {displayShopping.map((s) => {
                   const m = members.find(x => x.id === s.member_id)
                   const mIdx = members.findIndex(x => x.id === s.member_id)
                   

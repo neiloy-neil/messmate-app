@@ -9,10 +9,12 @@ import { MealChart, BalanceChart } from '@/components/Charts'
 import { SettlementList } from '@/components/SettlementList'
 import { ToastProvider, toast } from '@/components/ToastProvider'
 import Link from 'next/link'
+import { useUserRole } from '@/lib/useUserRole'
 
 function DashboardPageInner() {
   const sp = useSearchParams()
   const month = sp.get('month') || currentYM()
+  const { isGuest } = useUserRole()
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [members, setMembers] = useState<Member[]>([])
@@ -140,19 +142,28 @@ function DashboardPageInner() {
 
   if (loading) return <div className="page"><div className="spinner" /></div>
 
+  const displaySummaries = isGuest ? summary.members.filter(s => s.member.is_meal_only) : summary.members;
+
   return (
     <div className="page">
       {/* Topbar */}
       <div style={{ marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 800 }}>Dashboard</h1>
+          <h1 style={{ fontSize: 20, fontWeight: 800 }}>{isGuest ? 'Guest Dashboard' : 'Dashboard'}</h1>
           <p className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>{monthLabel(month)} overview</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {myPermissions.can_add_deposits && (
+          {!isGuest && myPermissions.can_add_deposits && (
             <button className="btn btn-secondary" style={{ borderColor: 'var(--green)' }} onClick={() => setShowPayment(true)}>💰 Receive</button>
           )}
-          <Link href={`/report?month=${month}`} className="btn btn-primary">Report →</Link>
+          {isGuest ? (
+            <>
+              <Link href={`/meals?month=${month}`} className="btn btn-secondary">🍽️ Log Meals</Link>
+              <Link href={`/shopping?month=${month}`} className="btn btn-primary">🛒 Add Shopping</Link>
+            </>
+          ) : (
+            <Link href={`/report?month=${month}`} className="btn btn-primary">Report →</Link>
+          )}
         </div>
       </div>
 
@@ -188,7 +199,7 @@ function DashboardPageInner() {
       )}
 
       {/* Caution / Info Banner */}
-      {(() => {
+      {!isGuest && (() => {
         const hasDues = summary.members.some(s => s.previousDue > 0)
         const anyLate = summary.members.some(s => s.lateFine > 0)
         const today = new Date().getDate()
@@ -220,35 +231,39 @@ function DashboardPageInner() {
 
       {/* Stats */}
       <div className="stats-grid">
-        <div className="stat-card purple">
-          <div className="stat-hd"><div className="stat-label">Members</div><div className="stat-icon purple">👥</div></div>
-          <div className="stat-val">{members.length}</div>
-          <div className="stat-sub">Active members</div>
-        </div>
+        {!isGuest && (
+          <div className="stat-card purple">
+            <div className="stat-hd"><div className="stat-label">Members</div><div className="stat-icon purple">👥</div></div>
+            <div className="stat-val">{members.length}</div>
+            <div className="stat-sub">Active members</div>
+          </div>
+        )}
         <div className="stat-card teal">
           <div className="stat-hd"><div className="stat-label">Total Meals</div><div className="stat-icon teal">🍽️</div></div>
           <div className="stat-val">{summary.totalMeals.toFixed(1)}</div>
-          <div className="stat-sub">Served this month</div>
+          <div className="stat-sub">{isGuest ? 'Mess total this month' : 'Served this month'}</div>
         </div>
         <div className="stat-card orange">
           <div className="stat-hd"><div className="stat-label">Total Expense</div><div className="stat-icon orange">🛒</div></div>
           <div className="stat-val">{fmt(summary.totalShopping)}</div>
-          <div className="stat-sub">Shopping this month</div>
+          <div className="stat-sub">{isGuest ? 'Mess grocery shopping' : 'Shopping this month'}</div>
         </div>
         <div className="stat-card green">
           <div className="stat-hd"><div className="stat-label">Meal Rate</div><div className="stat-icon green">📈</div></div>
           <div className="stat-val">{fmt(summary.mealRate, 2)}</div>
-          <div className="stat-sub">Per meal</div>
+          <div className="stat-sub">Cost per meal</div>
         </div>
-        <div className="stat-card red">
-          <div className="stat-hd"><div className="stat-label">Total Deposit</div><div className="stat-icon red">💰</div></div>
-          <div className="stat-val">{fmt(summary.totalDeposit)}</div>
-          <div className="stat-sub">Collected this month</div>
-        </div>
+        {!isGuest && (
+          <div className="stat-card red">
+            <div className="stat-hd"><div className="stat-label">Total Deposit</div><div className="stat-icon red">💰</div></div>
+            <div className="stat-val">{fmt(summary.totalDeposit)}</div>
+            <div className="stat-sub">Collected this month</div>
+          </div>
+        )}
       </div>
 
       {/* Charts */}
-      {members.length > 0 && (
+      {!isGuest && members.length > 0 && (
         <div className="grid-2">
           <div className="card">
             <div className="card-title mb-4">Meal Distribution</div>
@@ -267,8 +282,8 @@ function DashboardPageInner() {
       <div className="card">
         <div className="card-hd">
           <div>
-            <div className="card-title">Quick Summary</div>
-            <div className="card-sub">Member balances at a glance</div>
+            <div className="card-title">{isGuest ? 'Your Meal Calculations' : 'Quick Summary'}</div>
+            <div className="card-sub">{isGuest ? 'Detailed breakdown of meals, grocery contribution, and balance' : 'Member balances at a glance'}</div>
           </div>
         </div>
         {members.length === 0 ? (
@@ -283,15 +298,28 @@ function DashboardPageInner() {
               <thead><tr>
                 <th>Member</th>
                 <th className="text-center">Meals</th>
-                <th className="text-right">Previous Due</th>
-                <th className="text-right">Late Fine</th>
-                <th className="text-right">Current Due</th>
-                <th className="text-right">Deposit</th>
-                <th className="text-right">Balance</th>
-                <th>Status</th>
+                {isGuest ? (
+                  <>
+                    <th className="text-right">Meal Rate</th>
+                    <th className="text-right">Meal Cost</th>
+                    <th className="text-right">Shopping Credit</th>
+                    <th className="text-right">Deposit</th>
+                    <th className="text-right">Balance</th>
+                    <th>Status</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="text-right">Previous Due</th>
+                    <th className="text-right">Late Fine</th>
+                    <th className="text-right">Current Due</th>
+                    <th className="text-right">Deposit</th>
+                    <th className="text-right">Balance</th>
+                    <th>Status</th>
+                  </>
+                )}
               </tr></thead>
               <tbody>
-                {summary.members.map((s, i) => {
+                {displaySummaries.map((s, i) => {
                   const bal = s.balance
                   const isLate = s.lateFine > 0
                   const isApproaching = s.previousDue > 0 && new Date().getDate() > 5 && new Date().getDate() <= 10 && !isLate
@@ -305,23 +333,42 @@ function DashboardPageInner() {
                           {s.member.is_meal_only && (
                             <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '8px', background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', fontWeight: 600 }}>Meal Only</span>
                           )}
-                          {isLate && <span title="Late Fine Applied!" style={{ color: 'var(--red)', fontSize: '14px' }}>⚠️</span>}
-                          {isApproaching && <span title="Settle by 10th to avoid fines!" style={{ color: 'var(--yellow)', fontSize: '14px' }}>⏳</span>}
+                          {!isGuest && isLate && <span title="Late Fine Applied!" style={{ color: 'var(--red)', fontSize: '14px' }}>⚠️</span>}
+                          {!isGuest && isApproaching && <span title="Settle by 10th to avoid fines!" style={{ color: 'var(--yellow)', fontSize: '14px' }}>⏳</span>}
                         </div>
                       </td>
                       <td className="text-center">{s.meals}</td>
-                      <td className="text-right" style={{ color: s.previousDue > 0 ? 'var(--red)' : '' }}>{s.previousDue > 0 ? fmt(s.previousDue) : '-'}</td>
-                      <td className="text-right" style={{ color: isLate ? 'var(--red)' : '', fontWeight: isLate ? 'bold' : 'normal' }}>{s.lateFine > 0 ? fmt(s.lateFine) : '-'}</td>
-                      <td className="text-right">{fmt(s.totalDue)}</td>
-                      <td className="text-right">{fmt(s.shopping + s.deposit)}</td>
-                      <td className={`text-right font-bold ${bal >= 0 ? 'text-green' : 'text-red'}`}>
-                        {bal >= 0 ? '+' : ''}{fmt(bal)}
-                      </td>
-                      <td>
-                        <span className={`badge ${bal > 0 ? 'badge-green' : bal < 0 ? 'badge-red' : 'badge-yellow'}`}>
-                          {bal > 0 ? 'Will receive' : bal < 0 ? 'Owes' : 'Settled'}
-                        </span>
-                      </td>
+                      {isGuest ? (
+                        <>
+                          <td className="text-right text-muted">{fmt(summary.mealRate, 2)}</td>
+                          <td className="text-right font-bold" style={{ color: 'var(--accent)' }}>{fmt(s.mealCost)}</td>
+                          <td className="text-right" style={{ color: s.shopping > 0 ? 'var(--green)' : '' }}>{s.shopping > 0 ? fmt(s.shopping) : '-'}</td>
+                          <td className="text-right">{s.deposit > 0 ? fmt(s.deposit) : '-'}</td>
+                          <td className={`text-right font-bold ${bal >= 0 ? 'text-green' : 'text-red'}`}>
+                            {bal >= 0 ? '+' : ''}{fmt(bal)}
+                          </td>
+                          <td>
+                            <span className={`badge ${bal > 0 ? 'badge-green' : bal < 0 ? 'badge-red' : 'badge-yellow'}`}>
+                              {bal > 0 ? 'Will receive' : bal < 0 ? 'Owes' : 'Settled'}
+                            </span>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="text-right" style={{ color: s.previousDue > 0 ? 'var(--red)' : '' }}>{s.previousDue > 0 ? fmt(s.previousDue) : '-'}</td>
+                          <td className="text-right" style={{ color: isLate ? 'var(--red)' : '', fontWeight: isLate ? 'bold' : 'normal' }}>{s.lateFine > 0 ? fmt(s.lateFine) : '-'}</td>
+                          <td className="text-right">{fmt(s.totalDue)}</td>
+                          <td className="text-right">{fmt(s.shopping + s.deposit)}</td>
+                          <td className={`text-right font-bold ${bal >= 0 ? 'text-green' : 'text-red'}`}>
+                            {bal >= 0 ? '+' : ''}{fmt(bal)}
+                          </td>
+                          <td>
+                            <span className={`badge ${bal > 0 ? 'badge-green' : bal < 0 ? 'badge-red' : 'badge-yellow'}`}>
+                              {bal > 0 ? 'Will receive' : bal < 0 ? 'Owes' : 'Settled'}
+                            </span>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   )
                 })}

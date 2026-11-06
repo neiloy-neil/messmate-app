@@ -6,6 +6,7 @@ import { supabase, Member } from '@/lib/supabase'
 import { getDaysInMonth, formatDay, monthLabel, currentYM } from '@/lib/calculations'
 import { MemberAvatar } from '@/components/MemberAvatar'
 import { toast } from '@/components/ToastProvider'
+import { useUserRole } from '@/lib/useUserRole'
 
 interface Row { date: string; [memberId: string]: number | string }
 
@@ -17,6 +18,8 @@ function MealsPageInner() {
   const [loading, setLoading] = useState(true)
   const [managerUserId, setManagerUserId] = useState('')
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { isGuest } = useUserRole()
+  const [messTotalMeals, setMessTotalMeals] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -26,9 +29,12 @@ function MealsPageInner() {
       supabase.from('meals').select('*').gte('date', `${month}-01`).lte('date', `${month}-${getDaysInMonth(month)}`),
     ])
     const allMems: Member[] = mRes.data || []
-    const mems = allMems.filter(m => !m.hidden_months?.includes(month))
+    const mems = allMems
+      .filter(m => !m.hidden_months?.includes(month))
+      .filter(m => isGuest ? m.is_meal_only : true)
     setManagerUserId(allMems[0]?.user_id || '')
     const data = dataRes.data || []
+    setMessTotalMeals(data.reduce((sum: number, r: any) => sum + Number(r.count), 0))
     const days = getDaysInMonth(month)
     const grid: Row[] = []
     for (let d = 1; d <= days; d++) {
@@ -95,7 +101,9 @@ function MealsPageInner() {
       <div style={{ marginBottom: 22, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>Meal Tracker</h1>
-          <p className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>{monthLabel(month)} — click any cell to edit</p>
+          <p className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>
+            {monthLabel(month)} {isGuest ? `— Mess Total: ${messTotalMeals.toFixed(1)} meals` : '— click any cell to edit'}
+          </p>
         </div>
         <button className="btn btn-secondary" onClick={exportExcel}>📤 Export Excel</button>
       </div>

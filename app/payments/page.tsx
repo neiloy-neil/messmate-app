@@ -6,12 +6,19 @@ import { Member, Deposit } from '@/lib/supabase'
 import { currentYM } from '@/lib/calculations'
 import { MemberAvatar } from '@/components/MemberAvatar'
 import { toast } from '@/components/ToastProvider'
-
 import { useRouter } from 'next/navigation'
+import { useUserRole } from '@/lib/useUserRole'
 
 function PaymentHistoryPageInner() {
   const router = useRouter()
+  const { isGuest, loading: roleLoading } = useUserRole()
   const sp = useSearchParams()
+
+  useEffect(() => {
+    if (!roleLoading && isGuest) {
+      router.replace('/')
+    }
+  }, [roleLoading, isGuest, router])
   const month = sp.get('month') || currentYM()
   const [loading, setLoading] = useState(true)
   const [members, setMembers] = useState<Member[]>([])
@@ -54,7 +61,7 @@ function PaymentHistoryPageInner() {
     }
   }
 
-  if (loading) return <div className="page"><div className="spinner" /></div>
+  if (loading || roleLoading || isGuest) return <div className="page"><div className="spinner" /></div>
 
   return (
     <div className="page fade-in">

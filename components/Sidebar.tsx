@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
 import { monthLabel, currentYM } from '@/lib/calculations'
 import { ImportModal } from './ImportModal'
+import { useUserRole } from '@/lib/useUserRole'
 
 const NAV = [
   { href: '/', icon: '📊', label: 'Dashboard', section: 'Overview' },
@@ -16,10 +17,22 @@ const NAV = [
   { href: '/members', icon: '👥', label: 'Members', section: null },
 ]
 
+const GUEST_NAV = [
+  { href: '/', icon: '📊', label: 'Dashboard', section: 'Overview' },
+  { href: '/meals', icon: '🍽️', label: 'Meal Tracker', section: 'Actions' },
+  { href: '/shopping', icon: '🛒', label: 'Shopping Expense', section: null },
+]
+
 const MOBILE_MAIN_NAV = [
   { href: '/', icon: '📊', label: 'Dashboard' },
   { href: '/meals', icon: '🍽️', label: 'Meals' },
   { href: '/report', icon: '📋', label: 'Report' }
+]
+
+const GUEST_MOBILE_NAV = [
+  { href: '/', icon: '📊', label: 'Dashboard' },
+  { href: '/meals', icon: '🍽️', label: 'Meals' },
+  { href: '/shopping', icon: '🛒', label: 'Shopping' }
 ]
 
 const MOBILE_MORE_NAV = [
@@ -36,8 +49,11 @@ function SidebarInner() {
   const searchParams = useSearchParams()
   const [showImport, setShowImport] = useState(false)
   const [showMobileMore, setShowMobileMore] = useState(false)
+  const { isGuest } = useUserRole()
 
   const month = searchParams.get('month') || currentYM()
+  const navItems = isGuest ? GUEST_NAV : NAV
+  const mobileNav = isGuest ? GUEST_MOBILE_NAV : MOBILE_MAIN_NAV
 
   function handleMonthChange(e: React.ChangeEvent<HTMLInputElement>) {
     const params = new URLSearchParams(searchParams.toString())
@@ -107,7 +123,7 @@ function SidebarInner() {
         </div>
 
         <nav className="sidebar-nav">
-          {NAV.map(item => {
+          {navItems.map(item => {
             const showSection = item.section && item.section !== lastSection
             if (item.section) lastSection = item.section
             const isActive = pathname === item.href
@@ -127,9 +143,11 @@ function SidebarInner() {
         </nav>
 
         <div className="sidebar-footer" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <button className="btn-import" onClick={() => setShowImport(true)}>
-            📥 Import Excel
-          </button>
+          {!isGuest && (
+            <button className="btn-import" onClick={() => setShowImport(true)}>
+              📥 Import Excel
+            </button>
+          )}
           <button 
             className="btn-import" 
             style={{ background: 'var(--red)', borderColor: 'var(--red)' }}
@@ -144,7 +162,7 @@ function SidebarInner() {
       </aside>
 
       <nav className="bottom-nav">
-        {MOBILE_MAIN_NAV.map(item => {
+        {mobileNav.map(item => {
           const isActive = pathname === item.href
           return (
             <Link
@@ -157,14 +175,16 @@ function SidebarInner() {
             </Link>
           )
         })}
-        <button
-          className={`bottom-nav-link${showMobileMore ? ' active' : ''}`}
-          onClick={() => setShowMobileMore(true)}
-          style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
-        >
-          <span className="bottom-nav-icon">☰</span>
-          <span className="bottom-nav-label">More</span>
-        </button>
+        {!isGuest && (
+          <button
+            className={`bottom-nav-link${showMobileMore ? ' active' : ''}`}
+            onClick={() => setShowMobileMore(true)}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+          >
+            <span className="bottom-nav-icon">☰</span>
+            <span className="bottom-nav-label">More</span>
+          </button>
+        )}
       </nav>
 
       {/* Mobile Drawer Overlay */}

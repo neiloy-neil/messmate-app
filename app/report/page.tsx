@@ -1,15 +1,24 @@
 'use client'
 import { Suspense } from 'react'
 import { useEffect, useState, useCallback } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase, Member, Meal, Shopping, Deposit, Utility } from '@/lib/supabase'
 import { computeSummary, monthLabel, currentYM, fmt, getDaysInMonth, getPreviousMonth } from '@/lib/calculations'
 import { MemberAvatar } from '@/components/MemberAvatar'
 import { toast } from '@/components/ToastProvider'
+import { useUserRole } from '@/lib/useUserRole'
 
 function ReportPageInner() {
   const sp = useSearchParams()
+  const router = useRouter()
+  const { isGuest, loading: roleLoading } = useUserRole()
   const month = sp.get('month') || currentYM()
+
+  useEffect(() => {
+    if (!roleLoading && isGuest) {
+      router.replace('/')
+    }
+  }, [roleLoading, isGuest, router])
   const [members, setMembers] = useState<Member[]>([])
   const [meals, setMeals] = useState<Meal[]>([])
   const [shopping, setShopping] = useState<Shopping[]>([])
@@ -168,7 +177,7 @@ function ReportPageInner() {
     else { toast.success('Month Unlocked!'); setIsLocked(false) }
   }
 
-  if (loading) return <div className="page"><div className="spinner" /></div>
+  if (loading || roleLoading || isGuest) return <div className="page"><div className="spinner" /></div>
 
   const { totalMeals, totalShopping, totalDeposit, totalUtility, totalRent, totalSharedBills, mealRate, members: summaries } = summary
   const totalDue = summaries.reduce((s, x) => s + x.totalDue, 0)
