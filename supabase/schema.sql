@@ -21,6 +21,7 @@ CREATE TABLE members (
   can_add_meals BOOLEAN DEFAULT false,
   can_add_shopping BOOLEAN DEFAULT false,
   can_add_deposits BOOLEAN DEFAULT false,
+  is_meal_only BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

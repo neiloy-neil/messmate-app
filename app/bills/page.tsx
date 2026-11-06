@@ -106,7 +106,8 @@ function BillsPageInner() {
     (Number(shared.cleaner)||0) + 
     (Number(shared.maid)||0)
 
-  const splitAmount = members.length > 0 ? Math.ceil(totalShared / members.length) : 0
+  const residentMembers = members.filter(m => !m.is_meal_only)
+  const splitAmount = residentMembers.length > 0 ? Math.ceil(totalShared / residentMembers.length) : 0
 
   return (
     <div className="page">
@@ -121,7 +122,7 @@ function BillsPageInner() {
           <div className="card-hd mb-4">
             <div>
               <div className="card-title">Shared Mess Bills</div>
-              <div className="card-sub">Total bills split equally among all members</div>
+              <div className="card-sub">Total bills split equally among resident members</div>
             </div>
           </div>
           
@@ -158,7 +159,7 @@ function BillsPageInner() {
               <div style={{ fontSize: '18px', fontWeight: 'bold' }}>{fmt(totalShared)}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Per Person ({members.length})</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Per Resident ({residentMembers.length})</div>
               <div style={{ fontSize: '18px', fontWeight: 'bold', color: 'var(--accent)' }}>{fmt(splitAmount)}</div>
             </div>
           </div>
@@ -171,15 +172,15 @@ function BillsPageInner() {
           <div className="card-hd mb-4">
             <div>
               <div className="card-title">Individual House Rent</div>
-              <div className="card-sub">Specific rent amounts assigned to each member</div>
+              <div className="card-sub">Specific rent amounts for resident members (meal-only members excluded)</div>
             </div>
           </div>
 
-          {members.length === 0 ? (
-            <div className="empty" style={{ padding: '20px' }}>No members found.</div>
+          {residentMembers.length === 0 ? (
+            <div className="empty" style={{ padding: '20px' }}>No resident members found.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {members.map((m, i) => (
+              {residentMembers.map((m, i) => (
                 <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--bg-main)', padding: '8px 12px', borderRadius: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
                     <MemberAvatar name={m.name} index={i} size={32} fontSize={12} />

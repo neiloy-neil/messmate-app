@@ -302,6 +302,9 @@ function DashboardPageInner() {
                         <div className="member-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <MemberAvatar name={s.member.name} index={i} />
                           <span className="member-name">{s.member.name}</span>
+                          {s.member.is_meal_only && (
+                            <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '8px', background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', fontWeight: 600 }}>Meal Only</span>
+                          )}
                           {isLate && <span title="Late Fine Applied!" style={{ color: 'var(--red)', fontSize: '14px' }}>⚠️</span>}
                           {isApproaching && <span title="Settle by 10th to avoid fines!" style={{ color: 'var(--yellow)', fontSize: '14px' }}>⏳</span>}
                         </div>

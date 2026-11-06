@@ -21,12 +21,14 @@ function MembersPageInner() {
   const [showEditModal, setShowEditModal] = useState<Member | null>(null)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [isMealOnly, setIsMealOnly] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showHidden, setShowHidden] = useState(false)
   
   // Edit State
   const [editPerms, setEditPerms] = useState({ can_add_meals: false, can_add_shopping: false, can_add_deposits: false })
   const [editEmail, setEditEmail] = useState('')
+  const [editIsMealOnly, setEditIsMealOnly] = useState(false)
   
   const [isManager, setIsManager] = useState(true)
 
@@ -68,13 +70,14 @@ function MembersPageInner() {
     if (!n) { toast.error('Enter a name'); return }
     if (members.some(m => m.name.toLowerCase() === n.toLowerCase())) { toast.error('Member already exists'); return }
     setSaving(true)
-    const payload: any = { name: n }
+    const payload: any = { name: n, is_meal_only: isMealOnly }
     if (email.trim()) payload.email = email.trim()
     const { error } = await supabase.from('members').insert(payload)
     setSaving(false)
     if (error) { toast.error('Failed: ' + error.message); return }
     setName('')
     setEmail('')
+    setIsMealOnly(false)
     setShowModal(false)
     toast.success(`${n} added ✓`)
     load()
@@ -87,7 +90,8 @@ function MembersPageInner() {
       can_add_meals: editPerms.can_add_meals,
       can_add_shopping: editPerms.can_add_shopping,
       can_add_deposits: editPerms.can_add_deposits,
-      email: editEmail.trim() || null
+      email: editEmail.trim() || null,
+      is_meal_only: editIsMealOnly,
     }).eq('id', showEditModal.id)
     setSaving(false)
     if (error) { toast.error('Failed: ' + error.message); return }
@@ -172,7 +176,14 @@ function MembersPageInner() {
                     {getInitials(s.member.name)}
                   </div>
                   <div>
-                    <div className="mc-name">{s.member.name} {isHidden && '(Hidden)'}</div>
+                    <div className="mc-name" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span>{s.member.name} {isHidden && '(Hidden)'}</span>
+                      {s.member.is_meal_only && (
+                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 12, background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', fontWeight: 600 }}>
+                          Meal Only
+                        </span>
+                      )}
+                    </div>
                     <div className="mc-since">Since {new Date(s.member.created_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}</div>
                   </div>
                 </div>
@@ -208,6 +219,7 @@ function MembersPageInner() {
                             can_add_deposits: !!s.member.can_add_deposits,
                           })
                           setEditEmail(s.member.email || '')
+                          setEditIsMealOnly(!!s.member.is_meal_only)
                           setShowEditModal(s.member)
                         }}
                       >
@@ -260,6 +272,22 @@ function MembersPageInner() {
               />
               <p className="text-muted" style={{ fontSize: 11, marginTop: 4 }}>If provided, they can sign up with this email to access their dashboard.</p>
             </div>
+            <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--bg-main)', borderRadius: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                <input 
+                  type="checkbox" 
+                  checked={isMealOnly} 
+                  onChange={e => setIsMealOnly(e.target.checked)} 
+                  style={{ marginTop: 3 }}
+                />
+                <div>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Meal-Only Member (Non-Resident)</span>
+                  <p className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>
+                    Exempt from house rent, shared mess bills, and utilities. Only pays for meals eaten.
+                  </p>
+                </div>
+              </label>
+            </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
               <button className="btn btn-primary" onClick={addMember} disabled={saving}>
@@ -288,6 +316,22 @@ function MembersPageInner() {
             </div>
 
             <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ padding: '10px 12px', background: 'var(--bg-main)', borderRadius: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={editIsMealOnly} 
+                    onChange={e => setEditIsMealOnly(e.target.checked)} 
+                    style={{ marginTop: 3 }}
+                  />
+                  <div>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>Meal-Only Member (Non-Resident)</span>
+                    <p className="text-muted" style={{ fontSize: 11, marginTop: 2 }}>
+                      Exempt from house rent, shared bills, and utilities.
+                    </p>
+                  </div>
+                </label>
+              </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                 <input type="checkbox" checked={editPerms.can_add_meals} onChange={e => setEditPerms(p => ({...p, can_add_meals: e.target.checked}))} />
                 <span style={{ fontSize: 14 }}>Can log their own daily meals</span>

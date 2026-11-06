@@ -101,15 +101,20 @@ export function computeSummary(
   const sb = sharedBills.length > 0 ? sharedBills[0] : null
   const totalSharedBills = sb ? (Number(sb.gas) + Number(sb.electricity) + Number(sb.internet) + Number(sb.water) + Number(sb.cleaner) + Number(sb.maid)) : 0
 
+  const residentMembers = members.filter(m => !m.is_meal_only)
+  const residentCount = residentMembers.length
+
   const mealRate = totalMeals > 0 ? totalShopping / totalMeals : 0
-  const utilityShare = members.length > 0 ? totalUtility / members.length : 0
-  const sharedBillShare = members.length > 0 ? totalSharedBills / members.length : 0
+  const utilityShare = residentCount > 0 ? totalUtility / residentCount : 0
+  const sharedBillShare = residentCount > 0 ? totalSharedBills / residentCount : 0
 
   let totalLateFines = 0
 
   Object.values(memberMap).forEach(d => {
-    // Late Fine Calculation
-    if (d.previousDue > 0) {
+    const isMealOnly = Boolean(d.member.is_meal_only)
+
+    // Late Fine Calculation (exempt meal-only members)
+    if (!isMealOnly && d.previousDue > 0) {
       // Check deposits to see when they cleared it
       const memberDeps = deposits.filter(dep => dep.member_id === d.member.id).sort((a, b) => a.date.localeCompare(b.date))
       let accumulated = 0
@@ -129,14 +134,23 @@ export function computeSummary(
       }
     }
 
-    // Apply admin fine adjustment (override/reduce/waive)
-    const adj = fineAdjustments[d.member.id] || 0
-    d.lateFineAdjustment = adj
-    d.lateFine = Math.max(0, d.lateFine + adj)
-    totalLateFines += d.lateFine
+    if (isMealOnly) {
+      d.lateFine = 0
+      d.lateFineAdjustment = 0
+      d.rent = 0
+      d.utilityShare = 0
+      d.sharedBillShare = 0
+    } else {
+      // Apply admin fine adjustment (override/reduce/waive)
+      const adj = fineAdjustments[d.member.id] || 0
+      d.lateFineAdjustment = adj
+      d.lateFine = Math.max(0, d.lateFine + adj)
+      totalLateFines += d.lateFine
 
-    d.utilityShare = Math.ceil(utilityShare)
-    d.sharedBillShare = Math.ceil(sharedBillShare)
+      d.utilityShare = Math.ceil(utilityShare)
+      d.sharedBillShare = Math.ceil(sharedBillShare)
+    }
+
     d.mealCost = Math.ceil(d.meals * mealRate)
     
     // Calculate how to apply prevDueDeposits
@@ -159,7 +173,7 @@ export function computeSummary(
     totalShopping,
     totalDeposit,
     totalUtility,
-    totalRent,
+    totalRent: Object.values(memberMap).reduce((s, d) => s + d.rent, 0),
     totalSharedBills,
     totalLateFines,
     mealRate,

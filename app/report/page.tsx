@@ -268,7 +268,15 @@ function ReportPageInner() {
                   const isEditing = editingFine?.memberId === s.member.id
                   return (
                     <tr key={s.member.id}>
-                      <td><div className="member-row"><MemberAvatar name={s.member.name} index={i} /><span className="member-name">{s.member.name}</span></div></td>
+                      <td>
+                        <div className="member-row" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <MemberAvatar name={s.member.name} index={i} />
+                          <span className="member-name">{s.member.name}</span>
+                          {s.member.is_meal_only && (
+                            <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', fontWeight: 600 }}>Meal Only</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="text-center">{s.meals}</td>
                       <td className="text-right text-muted">{fmt(mealRate, 2)}</td>
                       <td className="text-right">{fmt(s.rent)}</td>

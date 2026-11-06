@@ -13,6 +13,7 @@ export interface Member {
   can_add_meals?: boolean
   can_add_shopping?: boolean
   can_add_deposits?: boolean
+  is_meal_only?: boolean
   created_at: string
 }
 
