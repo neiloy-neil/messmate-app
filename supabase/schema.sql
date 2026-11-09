@@ -114,15 +114,21 @@ ALTER TABLE shared_bills    ENABLE ROW LEVEL SECURITY;
 -- RBAC Helper Functions (Security Definer to bypass RLS recursion)
 -- ============================================================
 CREATE OR REPLACE FUNCTION get_my_manager_id() RETURNS UUID AS $$
-  SELECT user_id FROM members WHERE auth_id = auth.uid() LIMIT 1;
+  SELECT user_id FROM members 
+  WHERE auth_id = auth.uid() 
+     OR (email IS NOT NULL AND lower(email) = lower(coalesce(auth.jwt() ->> 'email', '')))
+  LIMIT 1;
 $$ LANGUAGE sql SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION check_permission(perm_col TEXT) RETURNS BOOLEAN AS $$
 DECLARE
   has_perm BOOLEAN;
 BEGIN
-  EXECUTE format('SELECT %I FROM members WHERE auth_id = $1 LIMIT 1', perm_col)
-  INTO has_perm USING auth.uid();
+  EXECUTE format(
+    'SELECT %I FROM members WHERE auth_id = $1 OR (email IS NOT NULL AND lower(email) = lower($2)) LIMIT 1', 
+    perm_col
+  )
+  INTO has_perm USING auth.uid(), coalesce(auth.jwt() ->> 'email', '');
   RETURN COALESCE(has_perm, false);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -148,11 +154,12 @@ CREATE POLICY "Manager ALL, Member READ" ON members
 CREATE POLICY "Manager ALL" ON members
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
--- Meals: Manager ALL. Member READ. Member INSERT/UPDATE if permission.
+-- Meals: Manager ALL. Member READ. Member INSERT/UPDATE/DELETE if permission.
 CREATE POLICY "Meals READ" ON meals FOR SELECT USING (auth.uid() = user_id OR user_id = get_my_manager_id());
 CREATE POLICY "Meals MANAGER ALL" ON meals FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Meals MEMBER INSERT" ON meals FOR INSERT WITH CHECK (user_id = get_my_manager_id() AND check_permission('can_add_meals'));
 CREATE POLICY "Meals MEMBER UPDATE" ON meals FOR UPDATE USING (user_id = get_my_manager_id() AND check_permission('can_add_meals'));
+CREATE POLICY "Meals MEMBER DELETE" ON meals FOR DELETE USING (user_id = get_my_manager_id() AND check_permission('can_add_meals'));
 
 -- Shopping: Manager ALL. Member READ. Member INSERT/UPDATE if permission.
 CREATE POLICY "Shopping READ" ON shopping FOR SELECT USING (auth.uid() = user_id OR user_id = get_my_manager_id());
@@ -224,4 +231,21 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
+-- Trigger: When member email is added/updated, link existing auth_id if found
+CREATE OR REPLACE FUNCTION public.handle_member_email_link()
+RETURNS trigger AS $$
+BEGIN
+  IF NEW.email IS NOT NULL AND (NEW.auth_id IS NULL OR (TG_OP = 'UPDATE' AND NEW.email <> OLD.email)) THEN
+    SELECT id INTO NEW.auth_id FROM auth.users WHERE lower(email) = lower(NEW.email) LIMIT 1;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_member_email_link ON public.members;
+CREATE TRIGGER on_member_email_link
+  BEFORE INSERT OR UPDATE OF email ON public.members
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_member_email_link();
+
 

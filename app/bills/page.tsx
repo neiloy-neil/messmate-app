@@ -23,12 +23,14 @@ function BillsPageInner() {
   const [members, setMembers] = useState<Member[]>([])
   
   // Shared bills state
+  const [sharedBillId, setSharedBillId] = useState<string | null>(null)
   const [shared, setShared] = useState({
     gas: '', electricity: '', internet: '', water: '', cleaner: '', maid: ''
   })
   
-  // Individual rent state: map of member_id to rent amount string
+  // Individual rent state: map of member_id to rent amount string & row ID
   const [rents, setRents] = useState<Record<string, string>>({})
+  const [rentIds, setRentIds] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -43,6 +45,7 @@ function BillsPageInner() {
     setMembers(allMems.filter(m => !m.hidden_months?.includes(month)))
     
     if (sbRes.data) {
+      setSharedBillId(sbRes.data.id)
       setShared({
         gas: sbRes.data.gas.toString(),
         electricity: sbRes.data.electricity.toString(),
@@ -52,16 +55,20 @@ function BillsPageInner() {
         maid: sbRes.data.maid.toString()
       })
     } else {
+      setSharedBillId(null)
       setShared({ gas: '', electricity: '', internet: '', water: '', cleaner: '', maid: '' })
     }
 
     const rentMap: Record<string, string> = {}
+    const idMap: Record<string, string> = {}
     if (irRes.data) {
       irRes.data.forEach((r: IndividualRent) => {
         rentMap[r.member_id] = r.amount.toString()
+        idMap[r.member_id] = r.id
       })
     }
     setRents(rentMap)
+    setRentIds(idMap)
     
     } finally {
       setLoading(false)
@@ -85,7 +92,32 @@ function BillsPageInner() {
       maid: Number(shared.maid) || 0,
     }
 
-    const { error } = await supabase.from('shared_bills').upsert(payload, { onConflict: 'user_id,month' })
+    let error: any = null
+    let targetId = sharedBillId
+
+    if (!targetId) {
+      const { data: existing } = await supabase
+        .from('shared_bills')
+        .select('id')
+        .eq('month', month)
+        .maybeSingle()
+      if (existing?.id) {
+        targetId = existing.id
+        setSharedBillId(existing.id)
+      }
+    }
+
+    if (targetId) {
+      const res = await supabase.from('shared_bills').update(payload).eq('id', targetId)
+      error = res.error
+    } else {
+      const res = await supabase.from('shared_bills').insert(payload).select('id').maybeSingle()
+      const newId = (res.data as any)?.id
+      if (newId) {
+        setSharedBillId(newId)
+      }
+      error = res.error
+    }
 
     if (error) toast.error('Failed to save bills: ' + error.message)
     else toast.success('Shared bills saved!')
@@ -96,10 +128,41 @@ function BillsPageInner() {
     if (!user) return
 
     const amount = Number(rents[memberId]) || 0
-    const { error } = await supabase.from('individual_rent').upsert(
-      { user_id: user.id, member_id: memberId, month, amount },
-      { onConflict: 'member_id,month' }
-    )
+    let targetId = rentIds[memberId]
+
+    if (!targetId) {
+      const { data: existing } = await supabase
+        .from('individual_rent')
+        .select('id')
+        .eq('member_id', memberId)
+        .eq('month', month)
+        .maybeSingle()
+      if (existing?.id) {
+        targetId = existing.id
+        setRentIds(prev => ({ ...prev, [memberId]: existing.id }))
+      }
+    }
+
+    let error: any = null
+    if (targetId) {
+      const res = await supabase
+        .from('individual_rent')
+        .update({ amount })
+        .eq('id', targetId)
+      error = res.error
+    } else {
+      const payload = { user_id: user.id, member_id: memberId, month, amount }
+      const res = await supabase
+        .from('individual_rent')
+        .insert(payload)
+        .select('id')
+        .maybeSingle()
+      const newId = (res.data as any)?.id
+      if (newId) {
+        setRentIds(prev => ({ ...prev, [memberId]: newId }))
+      }
+      error = res.error
+    }
 
     if (error) toast.error('Failed to save rent: ' + error.message)
     else toast.success('Rent updated!')

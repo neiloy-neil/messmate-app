@@ -14,56 +14,122 @@ function MealsPageInner() {
   const sp = useSearchParams()
   const month = sp.get('month') || currentYM()
   const [members, setMembers] = useState<Member[]>([])
+  const [allMembers, setAllMembers] = useState<Member[]>([])
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [managerUserId, setManagerUserId] = useState('')
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const { isGuest } = useUserRole()
+  const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const { isGuest, loading: roleLoading } = useUserRole()
   const [messTotalMeals, setMessTotalMeals] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-    const [mRes, dataRes] = await Promise.all([
-      supabase.from('members').select('*').order('created_at'),
-      supabase.from('meals').select('*').gte('date', `${month}-01`).lte('date', `${month}-${getDaysInMonth(month)}`),
-    ])
-    const allMems: Member[] = mRes.data || []
-    const mems = allMems
-      .filter(m => !m.hidden_months?.includes(month))
-      .filter(m => isGuest ? m.is_meal_only : true)
-    setManagerUserId(allMems[0]?.user_id || '')
-    const data = dataRes.data || []
-    setMessTotalMeals(data.reduce((sum: number, r: any) => sum + Number(r.count), 0))
-    const days = getDaysInMonth(month)
-    const grid: Row[] = []
-    for (let d = 1; d <= days; d++) {
-      const date = formatDay(month, d)
-      const row: Row = { date }
-      mems.forEach(m => { row[m.id] = 0 })
-      data.filter(r => r.date === date).forEach(r => { row[r.member_id] = Number(r.count) })
-      grid.push(row)
-    }
-    setMembers(mems)
-    setRows(grid)
+      const [mRes, dataRes] = await Promise.all([
+        supabase.from('members').select('*').order('created_at'),
+        supabase.from('meals').select('*').gte('date', `${month}-01`).lte('date', `${month}-${getDaysInMonth(month)}`),
+      ])
+      const allMems: Member[] = mRes.data || []
+      setAllMembers(allMems)
+      const mgrId = allMems[0]?.user_id || ''
+      setManagerUserId(mgrId)
+
+      const activeMems = allMems.filter(m => !m.hidden_months?.includes(month))
+      const guestMems = activeMems.filter(m => m.is_meal_only)
+
+      // If guest user, show guest members; if none tagged yet, show all active members as fallback
+      const mems = isGuest
+        ? (guestMems.length > 0 ? guestMems : activeMems)
+        : activeMems
+
+      const data = dataRes.data || []
+      setMessTotalMeals(data.reduce((sum: number, r: any) => sum + Number(r.count), 0))
+      
+      const days = getDaysInMonth(month)
+      const grid: Row[] = []
+      for (let d = 1; d <= days; d++) {
+        const date = formatDay(month, d)
+        const row: Row = { date }
+        mems.forEach(m => { row[m.id] = 0 })
+        data.filter(r => r.date === date).forEach(r => { row[r.member_id] = Number(r.count) })
+        grid.push(row)
+      }
+      setMembers(mems)
+      setRows(grid)
+    } catch (err: any) {
+      console.error('Error loading meals:', err)
+      toast.error('Failed to load meals: ' + err.message)
     } finally {
       setLoading(false)
     }
-  }, [month])
+  }, [month, isGuest])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { 
+    if (!roleLoading) {
+      load() 
+    }
+  }, [load, roleLoading])
 
   function handleChange(date: string, memberId: string, val: string) {
-    setRows(prev => prev.map(r => r.date === date ? { ...r, [memberId]: val === '' ? 0 : Number(val) } : r))
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => save(date, memberId, val === '' ? 0 : Number(val)), 600)
+    const num = val === '' ? '' : Number(val)
+    setRows(prev => prev.map(r => r.date === date ? { ...r, [memberId]: num } : r))
+    
+    const key = `${date}_${memberId}`
+    if (saveTimers.current[key]) clearTimeout(saveTimers.current[key])
+    saveTimers.current[key] = setTimeout(() => {
+      save(date, memberId, val === '' ? 0 : Number(val))
+      delete saveTimers.current[key]
+    }, 600)
+  }
+
+  function handleBlur(date: string, memberId: string, val: string | number) {
+    const key = `${date}_${memberId}`
+    if (saveTimers.current[key]) {
+      clearTimeout(saveTimers.current[key])
+      delete saveTimers.current[key]
+      save(date, memberId, Number(val) || 0)
+    }
   }
 
   async function save(date: string, memberId: string, count: number) {
-    if (count === 0) {
-      await supabase.from('meals').delete().eq('member_id', memberId).eq('date', date)
-    } else {
-      await supabase.from('meals').upsert({ user_id: managerUserId || undefined, member_id: memberId, date, count }, { onConflict: 'member_id,date' })
+    const targetUserId = members.find(m => m.id === memberId)?.user_id || 
+                         allMembers.find(m => m.id === memberId)?.user_id || 
+                         managerUserId
+
+    try {
+      if (count === 0) {
+        const { error } = await supabase
+          .from('meals')
+          .delete()
+          .eq('member_id', memberId)
+          .eq('date', date)
+
+        if (error) {
+          console.error('Delete meal error:', error)
+          toast.error('Failed to clear meal: ' + error.message)
+        }
+      } else {
+        const payload: any = {
+          member_id: memberId,
+          date,
+          count
+        }
+        if (targetUserId) {
+          payload.user_id = targetUserId
+        }
+
+        const { error } = await supabase
+          .from('meals')
+          .upsert(payload, { onConflict: 'member_id,date' })
+
+        if (error) {
+          console.error('Save meal error:', error)
+          toast.error('Failed to save meal: ' + error.message)
+        }
+      }
+    } catch (err: any) {
+      console.error('Save meal exception:', err)
+      toast.error('Error saving meal: ' + (err?.message || 'Network error'))
     }
   }
 
@@ -142,9 +208,10 @@ function MealsPageInner() {
                           <input
                             type="number" min={0} max={10} step={0.5}
                             className="cell-input"
-                            value={Number(row[m.id]) || ''}
+                            value={row[m.id] === '' || row[m.id] === undefined ? '' : Number(row[m.id])}
                             placeholder="0"
                             onChange={e => handleChange(row.date, m.id, e.target.value)}
+                            onBlur={e => handleBlur(row.date, m.id, e.target.value)}
                           />
                         </td>
                       ))}
