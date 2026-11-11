@@ -14,8 +14,8 @@ DROP TABLE IF EXISTS members CASCADE;
 CREATE TABLE members (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id    UUID NOT NULL DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE,
-  auth_id    UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
-  email      TEXT UNIQUE,
+  auth_id    UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  email      TEXT,
   name       TEXT NOT NULL,
   hidden_months TEXT[] DEFAULT '{}',
   can_add_meals BOOLEAN DEFAULT false,
@@ -124,11 +124,19 @@ CREATE OR REPLACE FUNCTION check_permission(perm_col TEXT) RETURNS BOOLEAN AS $$
 DECLARE
   has_perm BOOLEAN;
 BEGIN
-  EXECUTE format(
-    'SELECT %I FROM members WHERE auth_id = $1 OR (email IS NOT NULL AND lower(email) = lower($2)) LIMIT 1', 
-    perm_col
-  )
-  INTO has_perm USING auth.uid(), coalesce(auth.jwt() ->> 'email', '');
+  IF perm_col IN ('can_add_meals', 'can_add_shopping') THEN
+    EXECUTE format(
+      'SELECT bool_or(%I OR COALESCE(is_meal_only, false)) FROM members WHERE auth_id = $1 OR (email IS NOT NULL AND lower(email) = lower($2))', 
+      perm_col
+    )
+    INTO has_perm USING auth.uid(), coalesce(auth.jwt() ->> 'email', '');
+  ELSE
+    EXECUTE format(
+      'SELECT bool_or(%I) FROM members WHERE auth_id = $1 OR (email IS NOT NULL AND lower(email) = lower($2))', 
+      perm_col
+    )
+    INTO has_perm USING auth.uid(), coalesce(auth.jwt() ->> 'email', '');
+  END IF;
   RETURN COALESCE(has_perm, false);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -158,7 +166,9 @@ CREATE POLICY "Manager ALL" ON members
 CREATE POLICY "Meals READ" ON meals FOR SELECT USING (auth.uid() = user_id OR user_id = get_my_manager_id());
 CREATE POLICY "Meals MANAGER ALL" ON meals FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Meals MEMBER INSERT" ON meals FOR INSERT WITH CHECK (user_id = get_my_manager_id() AND check_permission('can_add_meals'));
-CREATE POLICY "Meals MEMBER UPDATE" ON meals FOR UPDATE USING (user_id = get_my_manager_id() AND check_permission('can_add_meals'));
+CREATE POLICY "Meals MEMBER UPDATE" ON meals FOR UPDATE
+  USING (user_id = get_my_manager_id() AND check_permission('can_add_meals'))
+  WITH CHECK (user_id = get_my_manager_id() AND check_permission('can_add_meals'));
 CREATE POLICY "Meals MEMBER DELETE" ON meals FOR DELETE USING (user_id = get_my_manager_id() AND check_permission('can_add_meals'));
 
 -- Shopping: Manager ALL. Member READ. Member INSERT/UPDATE if permission.

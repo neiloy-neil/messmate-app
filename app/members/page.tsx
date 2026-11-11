@@ -79,7 +79,12 @@ function MembersPageInner() {
     if (!n) { toast.error('Enter a name'); return }
     if (members.some(m => m.name.toLowerCase() === n.toLowerCase())) { toast.error('Member already exists'); return }
     setSaving(true)
-    const payload: any = { name: n, is_meal_only: isMealOnly }
+    const payload: any = {
+      name: n,
+      is_meal_only: isMealOnly,
+      can_add_meals: isMealOnly,
+      can_add_shopping: isMealOnly,
+    }
     if (email.trim()) payload.email = email.trim()
     const { error } = await supabase.from('members').insert(payload)
     setSaving(false)
@@ -330,7 +335,13 @@ function MembersPageInner() {
                   <input 
                     type="checkbox" 
                     checked={editIsMealOnly} 
-                    onChange={e => setEditIsMealOnly(e.target.checked)} 
+                    onChange={e => {
+                      const checked = e.target.checked
+                      setEditIsMealOnly(checked)
+                      if (checked) {
+                        setEditPerms(p => ({ ...p, can_add_meals: true, can_add_shopping: true }))
+                      }
+                    }} 
                     style={{ marginTop: 3 }}
                   />
                   <div>

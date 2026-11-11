@@ -19,6 +19,7 @@ function MealsPageInner() {
   const [loading, setLoading] = useState(true)
   const [managerUserId, setManagerUserId] = useState('')
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const mealIdsRef = useRef<Record<string, string>>({})
   const { isGuest, loading: roleLoading } = useUserRole()
   const [messTotalMeals, setMessTotalMeals] = useState(0)
 
@@ -29,6 +30,9 @@ function MealsPageInner() {
         supabase.from('members').select('*').order('created_at'),
         supabase.from('meals').select('*').gte('date', `${month}-01`).lte('date', `${month}-${getDaysInMonth(month)}`),
       ])
+      if (mRes.error) toast.error('Failed to load members: ' + mRes.error.message)
+      if (dataRes.error) toast.error('Failed to load meals: ' + dataRes.error.message)
+
       const allMems: Member[] = mRes.data || []
       setAllMembers(allMems)
       const mgrId = allMems[0]?.user_id || ''
@@ -43,6 +47,11 @@ function MealsPageInner() {
         : activeMems
 
       const data = dataRes.data || []
+      const idMap: Record<string, string> = {}
+      data.forEach((r: any) => {
+        idMap[`${r.date}_${r.member_id}`] = r.id
+      })
+      mealIdsRef.current = idMap
       setMessTotalMeals(data.reduce((sum: number, r: any) => sum + Number(r.count), 0))
       
       const days = getDaysInMonth(month)
@@ -71,8 +80,7 @@ function MealsPageInner() {
   }, [load, roleLoading])
 
   function handleChange(date: string, memberId: string, val: string) {
-    const num = val === '' ? '' : Number(val)
-    setRows(prev => prev.map(r => r.date === date ? { ...r, [memberId]: num } : r))
+    setRows(prev => prev.map(r => r.date === date ? { ...r, [memberId]: val } : r))
     
     const key = `${date}_${memberId}`
     if (saveTimers.current[key]) clearTimeout(saveTimers.current[key])
@@ -92,21 +100,51 @@ function MealsPageInner() {
   }
 
   async function save(date: string, memberId: string, count: number) {
+    const key = `${date}_${memberId}`
     const targetUserId = members.find(m => m.id === memberId)?.user_id || 
                          allMembers.find(m => m.id === memberId)?.user_id || 
                          managerUserId
 
     try {
-      if (count === 0) {
-        const { error } = await supabase
-          .from('meals')
-          .delete()
-          .eq('member_id', memberId)
-          .eq('date', date)
+      if (count <= 0) {
+        const existingId = mealIdsRef.current[key]
+        const query = existingId
+          ? supabase.from('meals').delete().eq('id', existingId)
+          : supabase.from('meals').delete().eq('member_id', memberId).eq('date', date)
+        const { error } = await query
 
         if (error) {
           console.error('Delete meal error:', error)
           toast.error('Failed to clear meal: ' + error.message)
+        } else {
+          delete mealIdsRef.current[key]
+        }
+        return
+      }
+
+      let existingId = mealIdsRef.current[key]
+      if (!existingId) {
+        const { data: existingRow } = await supabase
+          .from('meals')
+          .select('id')
+          .eq('member_id', memberId)
+          .eq('date', date)
+          .maybeSingle()
+        if (existingRow?.id) {
+          existingId = existingRow.id
+          mealIdsRef.current[key] = existingId
+        }
+      }
+
+      if (existingId) {
+        const { error } = await supabase
+          .from('meals')
+          .update({ count })
+          .eq('id', existingId)
+
+        if (error) {
+          console.error('Update meal error:', error)
+          toast.error('Failed to save meal: ' + error.message)
         }
       } else {
         const payload: any = {
@@ -118,13 +156,17 @@ function MealsPageInner() {
           payload.user_id = targetUserId
         }
 
-        const { error } = await supabase
+        const { data: inserted, error } = await supabase
           .from('meals')
-          .upsert(payload, { onConflict: 'member_id,date' })
+          .insert(payload)
+          .select('id')
+          .maybeSingle()
 
         if (error) {
-          console.error('Save meal error:', error)
+          console.error('Insert meal error:', error)
           toast.error('Failed to save meal: ' + error.message)
+        } else if (inserted?.id) {
+          mealIdsRef.current[key] = inserted.id
         }
       }
     } catch (err: any) {
@@ -208,7 +250,7 @@ function MealsPageInner() {
                           <input
                             type="number" min={0} max={10} step={0.5}
                             className="cell-input"
-                            value={row[m.id] === '' || row[m.id] === undefined ? '' : Number(row[m.id])}
+                            value={row[m.id] === 0 || row[m.id] === undefined ? '' : row[m.id]}
                             placeholder="0"
                             onChange={e => handleChange(row.date, m.id, e.target.value)}
                             onBlur={e => handleBlur(row.date, m.id, e.target.value)}
